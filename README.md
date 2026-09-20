@@ -34,6 +34,33 @@ make sinteticos && make testar                                 # 596 testes; mak
 No Windows, os `.cmd` em `scripts/` executam os mesmos passos pelo WSL 2 (distro e venv no topo de cada
 arquivo — edite se os seus forem outros) e gravam o log na pasta de saída correspondente.
 
+### Início rápido no Linux (do zero ao CSV)
+
+```bash
+git clone https://github.com/leo-vilela/kaggle_Jusbrasil_BRACIS_2026.git && cd kaggle_Jusbrasil_BRACIS_2026
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt                                # numpy/pandas: só para a métrica oficial local
+make dados ZIP=~/Downloads/desafio-jusbrasil-bracis-2026.zip   # zip da aba Data → dados/
+make indice && make sinteticos && make testar                  # ~15 s; 596 testes
+make rodar && make avaliar && make submissao                   # núcleo: saida/, relatorio.json, submission.csv
+
+# árbitro LLM (GPU NVIDIA ≥ 24 GB, driver com suporte a CUDA 12.8):
+pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128   # o torch vem fora do requirements (na imagem Docker já está na base)
+pip install -r requirements-llm.txt                                           # transformers 5.16.1, bitsandbytes 0.50.2, accelerate…
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+source modelos/revisao_fixa.env && bash scripts/baixar_modelo.sh    # ≈ 18 GB → modelos/hf (uma vez; depois é offline)
+python scripts/rodar_llm_local.py --so dev                          # fumaça + medição no dev + submission_llm.csv + cache
+make rodar ARBITRO=transformers SAIDA=saida_llm && make avaliar SAIDA=saida_llm && make submissao SAIDA=saida_llm
+
+# conjunto cego (seção 3): .txt em dados/cego/txt e sample_submission.csv em dados/cego/, depois
+python scripts/rodar_cego.py                                   # → submission_cego_nucleo.csv e submission_cego_llm.csv
+```
+
+Snapshot dos pesos já baixado em outra pasta: `export CACA_MODELO=/caminho/do/snapshot CACA_MODELO_ID=Qwen/Qwen3.5-9B`
+antes dos comandos (ou `python scripts/rodar_cego.py --modelo /caminho/do/snapshot`). Para o Docker com GPU no Linux
+é preciso o NVIDIA Container Toolkit (`docker run --gpus all …`); sem ele, a reprodução só do cache (seção 5.2)
+funciona em qualquer máquina.
+
 ## 2. Rodar
 
 ```bash
