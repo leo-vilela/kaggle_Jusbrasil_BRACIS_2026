@@ -1,9 +1,12 @@
 @echo off
 rem Prova da imagem de submissao com o arbitro (Dockerfile.llm), em um clique, pelo WSL (Docker Desktop com a
-rem integracao WSL ativada para a distro): constroi caca-alucinacao:llm e reproduz o dev DENTRO do container so do
-rem cache (sem GPU), comparando o CSV com saida_llm_q35\submission_llm.csv. Com o argumento `gpu`, roda tambem o
-rem container com a GPU carregando o Qwen3.5-9B em NF4 de /opt/bracis/models (o caminho que a organizacao roda).
-rem Log em saida_docker\log.txt. Detalhes: scripts/docker_llm.sh.
+rem integracao WSL ativada para a distro). Constroi caca-alucinacao:llm e roda o dev DENTRO do container nos modos:
+rem   A. nucleo sem LLM (CPU)            - sempre
+rem   B. nucleo + LLM so do cache (CPU)  - sempre   (reproduz a submissao sem GPU)
+rem   C. nucleo + LLM na GPU             - so com o argumento `gpu` (carrega o Qwen3.5-9B em NF4 de /opt/bracis/models)
+rem Cada CSV e comparado com saida_llm_q35\submission_llm.csv. Log em saida_docker\log.txt. Detalhes: scripts/docker_llm.sh.
+rem   docker_llm.cmd        -> build + A + B
+rem   docker_llm.cmd gpu    -> build + A + B + C
 setlocal
 if not defined DISTRO set "DISTRO=debian-distro"
 if not defined PYWSL set "PYWSL=/opt/bracis/venv/bin/python"

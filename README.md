@@ -63,9 +63,21 @@ funciona em qualquer máquina.
 
 ## 2. Rodar
 
+O sistema é um só; o que muda é **como o árbitro LLM participa**. São três modos, e é importante não os confundir:
+
+| Modo | O que roda | Precisa de | Gera | Quando usar |
+|---|---|---|---|---|
+| **A — núcleo sem LLM** | só as regras determinísticas (`--arbitro nenhum`, o padrão) | CPU | `submission_…_nucleo.csv` | sempre; é a submissão de segurança |
+| **B — núcleo + LLM só do cache** | o árbitro está **ligado**, mas responde com as respostas gravadas na execução original (`CACA_LLM_SOMENTE_CACHE=1` + `cache_llm.jsonl`); zero chamadas ao modelo | CPU; **sem GPU, sem pesos** | o **mesmo** CSV do modo C, byte a byte | reproduzir a submissão com LLM em qualquer máquina |
+| **C — núcleo + LLM na GPU** | o árbitro está ligado e o Qwen3.5-9B roda de verdade (`--arbitro transformers`) | GPU ≥ 24 GB + pesos | `submission_…_llm.csv` (+ `cache_llm.jsonl`) | gerar a submissão com LLM |
+
+B e C produzem a mesma saída (B é a "gravação" de C); A pode diferir de B/C só nos documentos em que o LLM
+encontrou alguma citação que o regex não cobre (no conjunto de desenvolvimento, nenhum — A = B = C).
+
 ```bash
-make rodar                                        # núcleo: dados/txt → saida/*.json (+ saida/rastro.jsonl)
-make rodar ARBITRO=transformers SAIDA=saida_llm   # núcleo + árbitro Qwen3.5-9B (GPU; pesos da seção 4)
+make rodar                                        # modo A — núcleo: dados/txt → saida/*.json (+ saida/rastro.jsonl)
+make rodar ARBITRO=transformers SAIDA=saida_llm   # modo C — núcleo + árbitro Qwen3.5-9B (GPU; pesos da seção 4)
+CACA_LLM_SOMENTE_CACHE=1 CACA_LLM_CACHE_IMPORTAR=saida_llm_q35/cache_llm.jsonl make rodar ARBITRO=transformers SAIDA=saida_rep   # modo B
 make avaliar [SAIDA=…]                            # métrica oficial (kaggle_metric.py) + diagnóstico → relatorio.json
 make submissao [SAIDA=…]                          # submission.csv pelo conversor oficial + validação + zip dos JSONs
 ```
@@ -93,14 +105,15 @@ Quando a organização publicar os `.txt` do conjunto cego na aba *Data*:
    python scripts/rodar_cego.py                  # Windows: scripts\rodar_cego_wsl.cmd (um clique)
    ```
 
-   Ele executa o núcleo (`saida_cego/`) e o núcleo + árbitro Qwen3.5-9B (`saida_cego_llm/`), gera e valida
+   Ele executa o modo A — núcleo (`saida_cego/`) — e o modo C — núcleo + árbitro Qwen3.5-9B na GPU
+   (`saida_cego_llm/`) —, gera e valida
    `submission_cego_nucleo.csv` e `submission_cego_llm.csv` (conversor oficial, `sample_submission` do cego,
    zip dos JSONs), exporta `saida_cego_llm/cache_llm.jsonl` (todas as respostas do modelo, para reprodução
    sem GPU) e imprime o tempo por documento (envelope: média ≤ 60 s), as citações por classe e em quantos
    documentos os dois CSVs diferem. Opções: `--entrada`, `--sample`, `--sem-arbitro`, `--modelo <snapshot local>`.
 3. Envie os dois CSVs em *Submit Prediction* e marque **os dois** em *Submissions → Select*: o Kaggle
    conta a melhor das selecionadas no placar privado, então ligar o árbitro nunca rebaixa o resultado.
-4. Reprodução exata das duas saídas, em qualquer máquina, sem GPU (seção 5):
+4. Reprodução exata das duas saídas, em qualquer máquina, sem GPU (seção 5; a segunda é o modo B):
 
    ```bash
    python scripts/reproduzir.py --entrada dados/cego/txt --referencia submission_cego_nucleo.csv
@@ -156,54 +169,62 @@ Duas imagens, bases fixadas por digest, dependências pinadas com `==`; nenhum d
 (só `dados/calibracao.json`, artefato nosso):
 
 ```bash
-make docker        # caca-alucinacao:latest — núcleo, CPU            (Dockerfile)
-make docker-llm    # caca-alucinacao:llm    — núcleo + árbitro, GPU  (Dockerfile.llm; --build-arg CACA_MODELO_REVISAO da revisão fixa)
+make docker        # caca-alucinacao:latest — Dockerfile:     só o núcleo (modo A); não tem torch, roda em qualquer CPU
+make docker-llm    # caca-alucinacao:llm    — Dockerfile.llm: núcleo + árbitro (modos A, B e C); --build-arg CACA_MODELO_REVISAO da revisão fixa
 ```
 
-Núcleo (CPU, offline):
+A imagem `:llm` cobre os três modos — a `:latest` existe só por ser pequena e não exigir CUDA. Os três comandos,
+lado a lado (troque `/caminho/…` pelas suas pastas; `/data/out` recebe um JSON por documento):
+
+**Modo A — núcleo sem LLM** (CPU, offline; com qualquer uma das imagens):
 
 ```bash
 docker run --rm --network none \
-  -v /caminho/txt:/data/in:ro -v /caminho/saida:/data/out \
+  -v /caminho/txt:/data/in:ro -v /caminho/saida_nucleo:/data/out \
   -v /caminho/desafio1_bracis.db:/data/base/desafio1_bracis.db:ro \
-  caca-alucinacao:latest --input /data/in --output /data/out
+  caca-alucinacao:llm --input /data/in --output /data/out --arbitro nenhum
+# (ou caca-alucinacao:latest sem o --arbitro: o padrão dessa imagem já é nenhum)
 ```
 
-Núcleo + árbitro Qwen3.5-9B na GPU (pesos de `scripts/baixar_modelo.sh` montados em `/modelos`; a imagem
-já aponta `HF_HOME=/modelos/hf`, modo offline, revisão fixa e NF4):
-
-```bash
-docker run --rm --network none --gpus all \
-  -v /caminho/txt:/data/in:ro -v /caminho/saida:/data/out \
-  -v /caminho/desafio1_bracis.db:/data/base/desafio1_bracis.db:ro \
-  -v $PWD/modelos:/modelos:ro \
-  caca-alucinacao:llm --input /data/in --output /data/out --arbitro transformers
-# snapshot local no lugar do cache do Hugging Face: -e CACA_MODELO=/modelos/<pasta> -e CACA_MODELO_ID=Qwen/Qwen3.5-9B
-```
-
-Núcleo + árbitro **sem GPU**, reproduzindo exatamente a saída submetida a partir do cache exportado:
+**Modo B — núcleo + LLM só do cache** (CPU, sem pesos: reproduz exatamente o CSV submetido com LLM; falha com
+abstenção se alguma janela não estiver no cache, nunca chama o modelo):
 
 ```bash
 docker run --rm --network none \
-  -v /caminho/txt:/data/in:ro -v /caminho/saida:/data/out \
+  -v /caminho/txt:/data/in:ro -v /caminho/saida_llm:/data/out \
   -v /caminho/desafio1_bracis.db:/data/base/desafio1_bracis.db:ro \
   -v /caminho/da/pasta/com/cache_llm.jsonl:/data/cache:ro \
   -e CACA_LLM_SOMENTE_CACHE=1 -e CACA_LLM_CACHE_IMPORTAR=/data/cache/cache_llm.jsonl \
   caca-alucinacao:llm --input /data/in --output /data/out --arbitro transformers
 ```
 
-Em seguida, `python json_to_submission.py /caminho/saida submission.csv` (conversor oficial) ou
-`scripts/gerar_submissao.py --saida /caminho/saida --destino submission.csv --sample <sample_submission>`.
-
-Prova da imagem do árbitro em um comando — constrói, reproduz o conjunto de desenvolvimento **dentro do
-container** só do cache e, com `gpu`, carrega o Qwen3.5-9B na GPU; compara os CSVs com o da medição de referência:
+**Modo C — núcleo + LLM na GPU** (pesos de `scripts/baixar_modelo.sh` montados em `/modelos`; a imagem já aponta
+`HF_HOME=/modelos/hf`, modo offline, revisão fixa e NF4; no Linux exige o NVIDIA Container Toolkit):
 
 ```bash
-bash scripts/docker_llm.sh [gpu]          # Windows: scripts\docker_llm.cmd [gpu]
+docker run --rm --network none --gpus all \
+  -v /caminho/txt:/data/in:ro -v /caminho/saida_llm:/data/out \
+  -v /caminho/desafio1_bracis.db:/data/base/desafio1_bracis.db:ro \
+  -v $PWD/modelos:/modelos:ro \
+  caca-alucinacao:llm --input /data/in --output /data/out --arbitro transformers
+# snapshot local no lugar do cache do Hugging Face: -e CACA_MODELO=/modelos/<pasta> -e CACA_MODELO_ID=Qwen/Qwen3.5-9B
+# o cache das respostas fica em /data/out/.cache_llm/ (SQLite); para exportar o JSONL do modo B, use scripts/rodar_cego.py
 ```
 
-Resultado verificado: build OK; só do cache → CSV idêntico (0 chamadas, 0 abstenções); com GPU → 7,3 GB de
-VRAM, 100 chamadas reais ao modelo, ≈ 6 s/doc, CSV idêntico.
+Em seguida, para qualquer modo: `python json_to_submission.py /caminho/saida submission.csv` (conversor oficial) ou
+`scripts/gerar_submissao.py --saida /caminho/saida --destino submission.csv --sample <sample_submission>`.
+
+**Prova da imagem em um comando** — constrói `caca-alucinacao:llm` e roda o conjunto de desenvolvimento **dentro do
+container** nos três modos, comparando cada CSV com o da medição de referência:
+
+```bash
+bash scripts/docker_llm.sh          # build + modo A + modo B (sem GPU)          | Windows: scripts\docker_llm.cmd
+bash scripts/docker_llm.sh gpu      # build + modos A, B e C (C carrega o modelo) | Windows: scripts\docker_llm.cmd gpu
+```
+
+O argumento `gpu` **não** liga ou desliga o LLM — ele acrescenta o modo C (o modelo rodando de verdade na GPU) aos
+modos A e B, que sempre rodam. Resultado verificado: build OK; modo B → CSV idêntico (0 chamadas, 0 abstenções);
+modo C → 7,3 GB de VRAM, 100 chamadas reais ao modelo, ≈ 6 s/doc, CSV idêntico.
 
 A imagem roda como root de propósito (`/data/out` é um bind mount da organização); `--user $(id -u):$(id -g)`
 funciona se a pasta de saída for gravável por esse usuário.

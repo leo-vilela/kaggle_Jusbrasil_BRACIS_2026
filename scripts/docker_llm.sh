@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# Prova da imagem de submissão com o árbitro (Dockerfile.llm): constrói e reproduz o dev DENTRO do container.
-#   bash scripts/docker_llm.sh          só do cache (sem GPU): CACA_LLM_SOMENTE_CACHE=1 + saida_llm_q35/cache_llm.jsonl
-#   bash scripts/docker_llm.sh gpu      idem e, depois, o container COM a GPU carregando o Qwen3.5-9B em NF4 de um
-#                                       snapshot local (MODELOS_DIR, padrão /opt/bracis/models) — o caminho da organização
-# Compara os CSVs gerados com saida_llm_q35/submission_llm.csv (byte a byte). Saídas em saida_docker/.
-# Exige docker (Docker Desktop com integração WSL, ou docker nativo) e, para `gpu`, o NVIDIA Container Toolkit.
+# Prova da imagem de submissão com o árbitro (Dockerfile.llm): constrói e roda o dev DENTRO do container nos três
+# modos de execução, comparando cada CSV com o de referência (byte a byte):
+#   A. núcleo sem LLM            (--arbitro nenhum; CPU)                                   → sempre
+#   B. núcleo + LLM só do cache  (--arbitro transformers + CACA_LLM_SOMENTE_CACHE=1; CPU)  → sempre
+#   C. núcleo + LLM na GPU       (--arbitro transformers + --gpus all + pesos montados)    → só com o argumento `gpu`
+#
+#   bash scripts/docker_llm.sh          build + modos A e B (sem GPU)
+#   bash scripts/docker_llm.sh gpu      build + modos A, B e C (C carrega o Qwen3.5-9B em NF4 de MODELOS_DIR/SNAPSHOT,
+#                                       padrão /opt/bracis/models/qwen35_9b — o caminho que a organização roda)
+# Referência: saida_llm_q35/submission_llm.csv (no dev os modos A, B e C produzem o mesmo CSV; no cego A pode
+# diferir de B/C, que são sempre iguais entre si). Saídas em saida_docker/. Exige docker (Docker Desktop com
+# integração WSL, ou docker nativo) e, para `gpu`, o NVIDIA Container Toolkit.
 set -uo pipefail
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$RAIZ"
@@ -33,7 +39,17 @@ comparar() {  # comparar <csv> <rótulo>
   if cmp -s "$1" "$REF"; then echo "IDÊNTICO ($2): $1 == $REF"; else echo "DIFERE ($2): $1 × $REF"; return 1; fi
 }
 
-# 1. só do cache (sem GPU): a mesma saída em qualquer máquina ---------------------------------------------
+# A. núcleo sem LLM (CPU) --------------------------------------------------------------------------------
+rm -rf saida_docker/out_nucleo && mkdir -p saida_docker/out_nucleo
+docker run --rm --network none \
+  -v "$RAIZ/dados/txt:/data/in:ro" -v "$RAIZ/saida_docker/out_nucleo:/data/out" \
+  -v "$RAIZ/dados/desafio1_bracis.db:/data/base/desafio1_bracis.db:ro" \
+  "$IMG" --input /data/in --output /data/out --arbitro nenhum > saida_docker/run_nucleo.log 2>&1 \
+  || { echo "CONTAINER (modo A, núcleo) FALHOU — veja saida_docker/run_nucleo.log"; tail -20 saida_docker/run_nucleo.log; exit 1; }
+csv saida_docker/out_nucleo saida_docker/submission_docker_nucleo.csv || exit 1
+comparar saida_docker/submission_docker_nucleo.csv "modo A: núcleo sem LLM" || exit 1
+
+# B. núcleo + LLM só do cache (sem GPU): a mesma saída em qualquer máquina ------------------------------------
 rm -rf saida_docker/out && mkdir -p saida_docker/out
 docker run --rm --network none \
   -v "$RAIZ/dados/txt:/data/in:ro" -v "$RAIZ/saida_docker/out:/data/out" \
@@ -44,10 +60,10 @@ docker run --rm --network none \
   || { echo "CONTAINER FALHOU — veja saida_docker/run_cache.log"; tail -20 saida_docker/run_cache.log; exit 1; }
 grep -o '"chamadas_ao_modelo": [0-9]*\|"abstencoes": [0-9]*' saida_docker/out/arbitro_estatisticas.log 2>/dev/null | tr '\n' ' '; echo
 csv saida_docker/out saida_docker/submission_docker.csv || exit 1
-comparar saida_docker/submission_docker.csv "só do cache" || exit 1
-[ "${1:-}" = "gpu" ] || { echo "Terminado (sem GPU). Para o caminho com a GPU: bash scripts/docker_llm.sh gpu"; exit 0; }
+comparar saida_docker/submission_docker.csv "modo B: LLM só do cache" || exit 1
+[ "${1:-}" = "gpu" ] || { echo "Terminado (modos A e B, sem GPU). Para o modo C, com a GPU: bash scripts/docker_llm.sh gpu"; exit 0; }
 
-# 2. com GPU: o modelo real, NF4, do snapshot local --------------------------------------------------------
+# C. núcleo + LLM na GPU: o modelo real, NF4, do snapshot local ----------------------------------------------
 [ -d "$MODELOS_DIR/$SNAPSHOT" ] || { echo "ERRO: snapshot $MODELOS_DIR/$SNAPSHOT ausente (MODELOS_DIR/SNAPSHOT)"; exit 1; }
 rm -rf saida_docker/out_gpu && mkdir -p saida_docker/out_gpu
 t0=$(date +%s)
@@ -60,5 +76,5 @@ docker run --rm --network none --gpus all \
   || { echo "CONTAINER COM GPU FALHOU — veja saida_docker/run_gpu.log"; tail -30 saida_docker/run_gpu.log; exit 1; }
 echo "GPU: $(( $(date +%s) - t0 )) s para $(ls saida_docker/out_gpu/*.json | wc -l) documentos; $(grep -o '"chamadas_ao_modelo": [0-9]*\|"abstencoes": [0-9]*' saida_docker/out_gpu/arbitro_estatisticas.log 2>/dev/null | tr '\n' ' ')"
 csv saida_docker/out_gpu saida_docker/submission_docker_gpu.csv || exit 1
-comparar saida_docker/submission_docker_gpu.csv "com GPU" || exit 1
-echo "Terminado: a imagem constrói, reproduz do cache e roda o modelo na GPU com a mesma saída."
+comparar saida_docker/submission_docker_gpu.csv "modo C: LLM na GPU" || exit 1
+echo "Terminado: a imagem constrói e os três modos (núcleo, LLM do cache, LLM na GPU) produzem o CSV esperado."
