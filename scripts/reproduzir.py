@@ -38,6 +38,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -243,10 +244,13 @@ def main() -> int:
         et.falha("5 pipeline", f"cache do árbitro ausente: {args.cache_llm}")
         return imprimir(et, t0)
     tempos = []
+    # cada execução com o seu SQLite (importado do mesmo JSONL), numa pasta temporária local: nada
+    # passa de A para B, e o SQLite não depende da pasta de saída (montagens de rede/VM sem
+    # travas de arquivo deixam o cache inativo — e aí a reprodução falharia, como deve)
+    pasta_tmp = Path(tempfile.mkdtemp(prefix="caca_cache_llm_")) if env_llm else None
     for cmd, pasta in ((cmd_a, a), (cmd_b, b)):
         t = time.time()
-        # cada execução com o seu SQLite (importado do mesmo JSONL): nada passa de A para B
-        r = rodar(cmd, env=dict(env_llm, CACA_CACHE_LLM=str(args.saida / f"cache_llm_{pasta.name}.sqlite")) if env_llm else None)
+        r = rodar(cmd, env=dict(env_llm, CACA_CACHE_LLM=str(pasta_tmp / f"{pasta.name}.sqlite")) if env_llm else None)
         tempos.append(time.time() - t)
         if r.returncode != 0:
             et.falha("5 pipeline", f"CLI falhou (código {r.returncode}):\n" + (r.stdout + r.stderr)[-1500:])
@@ -264,12 +268,22 @@ def main() -> int:
         if args.arbitro != "nenhum":
             stats = estatisticas_arbitro(a)
             chamadas = stats.get("chamadas_ao_modelo")
+            abstencoes = stats.get("abstencoes")
+            cache = stats.get("cache") or {}
             detalhe += (f"\n      árbitro {args.arbitro}: {stats.get('modelo')}@{str(stats.get('revisao') or '')[:12]} "
                         f"prompt {stats.get('prompt_versao')}; chamadas ao modelo = {chamadas}; "
-                        f"abstenções = {stats.get('abstencoes')}; cache: {stats.get('cache', {}).get('acertos')} acertos")
-            if args.cache_llm is not None and chamadas not in (0, None):
-                et.falha("5 pipeline", detalhe + "\n      o árbitro chamou o modelo: a reprodução tem de vir só do cache")
-                return imprimir(et, t0)
+                        f"abstenções = {abstencoes}; cache: {cache.get('acertos')} acertos, {cache.get('registros')} registros")
+            if args.cache_llm is not None:
+                # reprodução só do cache: nenhuma chamada ao modelo E nenhuma abstenção (toda janela
+                # tem de achar a resposta gravada); cache inativo ou JSONL de outra versão do prompt
+                # aparecem aqui como abstenções, nunca como "reproduzido"
+                if chamadas not in (0, None):
+                    et.falha("5 pipeline", detalhe + "\n      o árbitro chamou o modelo: a reprodução tem de vir só do cache")
+                    return imprimir(et, t0)
+                if not cache.get("ativo", False) or (abstencoes or 0) > 0:
+                    et.falha("5 pipeline", detalhe + "\n      o árbitro NÃO respondeu do cache (cache inativo, JSONL de outro modelo/"
+                                                     "prompt ou janelas sem resposta gravada): a saída acima não reproduz a submissão com o árbitro")
+                    return imprimir(et, t0)
         et.ok("5 pipeline", detalhe)
 
     # 6. métrica oficial -----------------------------------------------------------------------
