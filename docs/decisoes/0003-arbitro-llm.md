@@ -68,7 +68,7 @@ semântica.
 6. **Envelope de 24 GB imposto em software.** `transformers`:
    `torch.cuda.set_per_process_memory_fraction(24 GB / total)` (5090 → 0,75); vLLM:
    `gpu_memory_utilization = 24·0,92 / total`. `scripts/limitar_gpu.ps1` limita a potência da
-   5090 a 450 W no Windows (no WSL o `nvidia-smi -pl` não funciona) para aproximar o
+   5090 a 420 W no Windows (perfil da máquina de referência; no WSL o `nvidia-smi -pl` não funciona) para aproximar o
    comportamento térmico de uma 4090/L4 — não afeta VRAM.
 7. **Uso residual, gatilhos estreitos.** Ver "Integração" abaixo. O árbitro é opcional em
    runtime (`--arbitro nenhum`), o Mock heurístico (`--arbitro mock`, sem modelo) é o fallback e
@@ -336,7 +336,7 @@ com ≥ 2 letras ambíguas sem reparo) — pendência registrada abaixo, não bl
   1 e 2 acima, veredito LIGAR).
 * ~~**Pesos**: download e hash na máquina com GPU~~ — feito em 20/09 (`saida_llm/modelo.json`: snapshot
   `a09a354…`, hash `2ea2bfcc05657159`; `scripts/baixar_modelo.sh` continua sendo o caminho do Docker).
-* Medir num L4/A10 emulado (fração de VRAM + 450 W): na 5090 o extrator custa 3,5–24 s/doc (dev 7,0);
+* Medir num L4/A10 emulado (fração de VRAM + 420 W): na 5090 a 420 W o extrator custa 3,5–24 s/doc (dev 7,0);
   numa L4 (≈ 3× mais lenta) o orçamento de 30 s/doc cortaria janelas em documentos longos — por isso
   a rodada do cego é feita na 5090 e o cache exportado acompanha a submissão. Decidir por
   `transformers` (padrão) ou `vllm`; fixar versões em `requirements-llm.txt`.

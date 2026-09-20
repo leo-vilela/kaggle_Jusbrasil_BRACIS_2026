@@ -1,0 +1,16 @@
+Caça-Alucinações — verificador de citações jurídicas (Jusbrasil × BRACIS 2026)
+Copyright 2026 Leonardo Garcia
+
+O código original deste repositório é disponibilizado sob a Apache License 2.0,
+conforme LICENSE. Esta declaração não relicencia os dados do desafio (documentos,
+gabarito, base canônica `desafio1_bracis.db`), o avaliador oficial
+(`kaggle_metric.py`, `json_to_submission.py`) nem modelos de terceiros — nada disso é
+distribuído aqui; os dados permanecem sujeitos às condições de disponibilização do
+desafio e são obtidos pela aba Data da competição.
+
+Qwen2.5-7B-Instruct (árbitro LLM) tem autores, revisão e licença (Apache-2.0)
+registrados em MANIFESTO_MODELO.md e modelos/revisao_fixa.env; os pesos são usados
+sem modificação (sem fine-tuning) e não são redistribuídos por este repositório.
+
+Os nomes BRACIS, Jusbrasil, Kaggle e Qwen identificam contexto e proveniência; não
+indicam endosso desta implementação.

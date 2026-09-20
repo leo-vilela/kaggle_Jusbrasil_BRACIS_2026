@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-  Limita a potência da GPU (RTX 5090) para 450 W durante os experimentos com o árbitro LLM.
+  Limita a potência da GPU (RTX 5090) para 420 W durante os experimentos com o árbitro LLM
+  (perfil de uso da máquina de referência: todas as medições de 20/09 foram feitas nele).
 
 .DESCRIPTION
   Roda `nvidia-smi -pl <watts>` como Administrador no WINDOWS. Dentro do WSL2 isso
@@ -18,7 +19,7 @@
   O ajuste é volátil: volta ao padrão ao reiniciar o Windows (ou com -Restaurar).
 
 .PARAMETER Watts
-  Limite de potência em watts (padrão 450). A 5090 aceita ≈ 400–600 W; abaixo do mínimo
+  Limite de potência em watts (padrão 420, o perfil da máquina de referência). A 5090 aceita ≈ 400–600 W; abaixo do mínimo
   o driver recusa e mostra a faixa permitida.
 
 .PARAMETER Restaurar
@@ -27,13 +28,13 @@
 .EXAMPLE
   # PowerShell como Administrador (botão direito > "Executar como administrador")
   Set-ExecutionPolicy -Scope Process Bypass
-  .\scripts\limitar_gpu.ps1              # 450 W
+  .\scripts\limitar_gpu.ps1              # 420 W
   .\scripts\limitar_gpu.ps1 -Watts 400
   .\scripts\limitar_gpu.ps1 -Restaurar
 #>
 [CmdletBinding()]
 param(
-    [int]$Watts = 450,
+    [int]$Watts = 420,
     [switch]$Restaurar
 )
 

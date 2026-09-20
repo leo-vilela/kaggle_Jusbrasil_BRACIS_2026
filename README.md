@@ -17,6 +17,11 @@
 > (mesmo SHA-256) e se reproduz sem GPU: `make reproduzir ARBITRO=transformers
 > CACHE_LLM=saida_llm/cache_llm.jsonl` (zero chamadas ao modelo, 5 s).
 
+Repositório público: <https://github.com/leo-vilela/kaggle_Jusbrasil_BRACIS_2026> (v1: núcleo determinístico +
+árbitro Qwen2.5 sem fine-tuning). A versão 2, com o LLM treinado como camada final de decisão nos casos residuais, vive
+em <https://github.com/leo-vilela/kaggle_Jusbrasil_BRACIS_2026_LLM>. Licença Apache-2.0 (LICENSE, NOTICE); os dados do
+desafio não são distribuídos aqui.
+
 ## O desafio em 5 linhas
 
 1. Entrada: um `.txt` por parecer jurídico (UTF-8, offsets em codepoints); saída: um JSON por
@@ -169,10 +174,10 @@ JSON é registrada e o lote continua; a submissão nunca fica sem linha. O sanea
 
 ## Roteiro na máquina local (RTX 5090, Windows + WSL2 + Docker Desktop)
 
-### 0. Limite de potência (450 W) — PowerShell **como administrador**, no Windows
+### 0. Limite de potência (420 W) — PowerShell **como administrador**, no Windows
 ```powershell
 cd C:\Users\leona\Downloads\pipeline-caca-alucinacao\verificador
-.\scripts\limitar_gpu.ps1 -Watts 450     # nvidia-smi -pl 450 (o limite é global da placa e vale para o WSL)
+.\scripts\limitar_gpu.ps1 -Watts 420     # nvidia-smi -pl 420 (o limite é global da placa e vale para o WSL); perfil usado em todas as medições
 ```
 
 ### 1. Ambiente no WSL2 (Ubuntu)
