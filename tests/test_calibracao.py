@@ -262,6 +262,33 @@ class TestPersistencia(unittest.TestCase):
             if v > CONFIANCA_TETO:
                 self.assertIn(cam, meta.get("caminhos_consolidados", []), cam)
 
+    def test_caminhos_llm_so_saem_do_prior_com_evidencia_do_modelo_real(self) -> None:
+        """ADR 0003/0007: um caminho ``llm:*`` só se afasta do prior da TABELA_INICIAL com decisões do
+        modelo REAL (``calibrar_completo.py --cache-llm``: ``meta.cache_llm`` com o SHA-256 do JSONL, o
+        modelo e a revisão; ``meta.holdout_llm`` com o Brier fora da amostra, não pior após o ajuste);
+        nunca recebe o teto consolidado."""
+        p = RAIZ / "dados" / "calibracao.json"
+        if not p.exists():
+            self.skipTest("dados/calibracao.json ausente")
+        conteudo = json.loads(p.read_text(encoding="utf-8"))
+        tabela, meta = cal.carregar(p), conteudo.get("meta") or {}
+        movidos = [cam for cam, v in tabela.items() if cal.sem_consolidacao(cam)
+                   and abs(v - cal.valor_do_caminho(cam, cal.TABELA_INICIAL)[0]) > 1e-9]
+        for cam in movidos:
+            self.assertLessEqual(tabela[cam], CONFIANCA_TETO, cam)
+            self.assertNotIn(cam, meta.get("caminhos_consolidados", []), cam)
+        if not movidos:
+            return
+        cache = meta.get("cache_llm") or {}
+        self.assertTrue(cache.get("sha256") and cache.get("modelo") and cache.get("revisao"),
+                        "caminhos llm:* treinados sem meta.cache_llm (evidência do modelo real)")
+        self.assertNotIn("mock", str(cache.get("modelo")))
+        hold = meta.get("holdout_llm") or {}
+        val = hold.get("validacao") or {}
+        self.assertGreater(val.get("n", 0), 0, "holdout dos caminhos llm:* ausente")
+        self.assertLessEqual(val["brier_depois"], val["brier_antes"] + 1e-9)
+        self.assertGreater(hold.get("documentos_validacao", 0), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,7 +1,16 @@
 {
  "meta": {
-  "brier_treino_antes": 0.004991193508728859,
-  "brier_treino_depois": 0.001752280975964661,
+  "brier_treino_antes": 0.005678209634471141,
+  "brier_treino_depois": 0.0017722846531318748,
+  "cache_llm": {
+   "arquivo": "cache_llm.jsonl",
+   "extracoes_por_conjunto": {
+    "r6_extrator_formas": 64
+   },
+   "modelo": "Qwen/Qwen2.5-7B-Instruct",
+   "revisao": "a09a35458c702b33eeacc393d103063234e8bc28",
+   "sha256": "03b560c665a86550854aa3df997843267ae1c9120656c387b5df39219a223260"
+  },
   "caminhos_consolidados": [
    "dispositivo",
    "dispositivo:fora_da_tabela",
@@ -39,6 +48,50 @@
    "dispositivo:na_tabela:ocr": {
     "acertos": 19.0,
     "n": 19.0
+   },
+   "llm": {
+    "acertos": 64.0,
+    "n": 64.0
+   },
+   "llm:extrator": {
+    "acertos": 64.0,
+    "n": 64.0
+   },
+   "llm:extrator:processo": {
+    "acertos": 43.0,
+    "n": 43.0
+   },
+   "llm:extrator:processo:0cand": {
+    "acertos": 16.0,
+    "n": 16.0
+   },
+   "llm:extrator:processo:1cand": {
+    "acertos": 27.0,
+    "n": 27.0
+   },
+   "llm:extrator:processo:1cand:cadeia_exata": {
+    "acertos": 27.0,
+    "n": 27.0
+   },
+   "llm:extrator:sumula": {
+    "acertos": 9.0,
+    "n": 9.0
+   },
+   "llm:extrator:sumula:fora_da_tabela": {
+    "acertos": 4.0,
+    "n": 4.0
+   },
+   "llm:extrator:sumula:na_tabela": {
+    "acertos": 5.0,
+    "n": 5.0
+   },
+   "llm:extrator:vaga": {
+    "acertos": 12.0,
+    "n": 12.0
+   },
+   "llm:extrator:vaga:incompleta": {
+    "acertos": 12.0,
+    "n": 12.0
    },
    "processo": {
     "acertos": 2138.0,
@@ -394,8 +447,8 @@
     "nome": "rastro:cal_r5_layouts/rastro.jsonl"
    },
    {
-    "acertos": 39,
-    "n": 39,
+    "acertos": 103,
+    "n": 103,
     "nome": "rastro:cal_r6_extrator_formas/rastro.jsonl"
    },
    {
@@ -404,7 +457,18 @@
     "nome": "rastro:cal_r6_extrator_distratores/rastro.jsonl"
    }
   ],
-  "gerado_em": "2026-09-20T03:49:16+00:00",
+  "gerado_em": "2026-09-20T18:16:50+00:00",
+  "holdout_llm": {
+   "conjunto": "r6_extrator_formas",
+   "documentos_treino": 6,
+   "documentos_validacao": 6,
+   "validacao": {
+    "acertos": 46,
+    "brier_antes": 0.029576086956521735,
+    "brier_depois": 0.004408560583653752,
+    "n": 46
+   }
+  },
   "n_minimo_consolidado": 100,
   "peso_prior": 4.0,
   "piso": 0.05,
@@ -433,16 +497,20 @@
   "dispositivo:na_tabela:ocr": 0.98,
   "dispositivo:sem_artigo": 0.5,
   "dispositivo:sem_diploma": 0.5,
-  "llm": 0.7,
-  "llm:extrator": 0.7,
+  "llm": 0.98,
+  "llm:extrator": 0.98,
   "llm:extrator:dispositivo": 0.8,
-  "llm:extrator:processo": 0.75,
-  "llm:extrator:processo:0cand": 0.7,
-  "llm:extrator:processo:1cand": 0.85,
+  "llm:extrator:processo": 0.9787,
+  "llm:extrator:processo:0cand": 0.94,
+  "llm:extrator:processo:1cand": 0.98,
+  "llm:extrator:processo:1cand:cadeia_exata": 0.98,
   "llm:extrator:processo:multi": 0.65,
-  "llm:extrator:sumula": 0.8,
+  "llm:extrator:sumula": 0.9385,
+  "llm:extrator:sumula:fora_da_tabela": 0.9,
+  "llm:extrator:sumula:na_tabela": 0.9111,
   "llm:extrator:tema": 0.7,
-  "llm:extrator:vaga": 0.75,
+  "llm:extrator:vaga": 0.9375,
+  "llm:extrator:vaga:incompleta": 0.9375,
   "processo": 0.998,
   "processo:0cand": 0.998,
   "processo:0cand:amplo": 0.9778,

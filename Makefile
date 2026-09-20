@@ -72,8 +72,8 @@ adversarial:      ## regenera os 34 conjuntos adversariais das revisões (script
 calibrar:         ## ajuste rápido de $(CALIBRACAO) a partir de UM rastro (scripts/treinar_calibracao.py); o oficial é calibrar-completo
 	$(PYTHON) scripts/treinar_calibracao.py --rastro $(RASTRO) --relatorio $(RELATORIO) --saida $(CALIBRACAO)
 
-calibrar-completo: ## retreino oficial e reproduzível: regenera sintéticos + 34 adversariais, pipeline em 38 conjuntos, treina em 37 e valida em n3_ood; compara com dados/calibracao.json (GRAVAR=1 grava)
-	$(PYTHON) scripts/calibrar_completo.py $(if $(GRAVAR),--gravar,)
+calibrar-completo: ## retreino oficial e reproduzível: regenera sintéticos + 34 adversariais, pipeline em 38 conjuntos, treina em 37 e valida em n3_ood; compara com dados/calibracao.json (GRAVAR=1 grava; CACHE_LLM=saida_llm/cache_llm.jsonl = árbitro real só do cache, treina os caminhos llm:*)
+	$(PYTHON) scripts/calibrar_completo.py $(if $(GRAVAR),--gravar,) $(if $(CACHE_LLM),--cache-llm $(CACHE_LLM),)
 
 comparar-arbitro: ## núcleo × árbitro (ARBITRO=mock|transformers|vllm) em todos os conjuntos, com a métrica oficial: Δscore, τ, precisão do extrator e VEREDITO (ADR 0003)
 	$(PYTHON) scripts/comparar_arbitro.py --arbitro $(if $(filter nenhum,$(ARBITRO)),mock,$(ARBITRO)) $(if $(CACHE_LLM),--cache $(CACHE_LLM),)

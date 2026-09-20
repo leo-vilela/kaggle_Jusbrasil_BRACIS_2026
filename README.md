@@ -1,12 +1,13 @@
 # Caça-Alucinações — verificador de citações jurídicas (Jusbrasil × BRACIS 2026)
 
-> Estado (20/09/2026, v1.2.3): **todos os módulos prontos e testados** (594 testes, `make testar`;
+> Estado (20/09/2026, v1.2.4): **todos os módulos prontos e testados** (595 testes, `make testar`;
 > reprodução em um comando, `make reproduzir`). Núcleo determinístico só com biblioteca padrão;
 > score no conjunto de desenvolvimento **1,10000** (1,0999960; τ = 0), nos sintéticos n2/n3
 > 1,10000 / 1,09986 e nos 34 conjuntos adversariais das revisões entre 1,027 e 1,10000 (todos com
 > τ = 0; ver `docs/decisoes/0005`–`0007`; geradores em `scripts/adversarial/`, `make adversarial`).
 > Calibração retreinada de forma reproduzível com validação fora da amostra (`make
-> calibrar-completo`, ADR 0007). O árbitro LLM (`llm/`, Qwen2.5-7B-Instruct, pesos originais,
+> calibrar-completo CACHE_LLM=…`, ADR 0007; desde a v1.2.4 os caminhos do extrator LLM são
+> calibrados com as 64 extrações reais da medição 2, holdout por documento incluído). O árbitro LLM (`llm/`, Qwen2.5-7B-Instruct, pesos originais,
 > revisão fixa) segue o **padrão ouro** (ADR 0003): extrai e desambigua com toda saída validada
 > contra o texto e a base, nunca classifica; `Dockerfile.llm` roda com ele **ligado**, e
 > `make comparar-arbitro` mede núcleo × árbitro com veredito automático. Medido com o Qwen real na
@@ -106,9 +107,13 @@ make testar            # ou: PYTHONPATH=src python -m unittest discover -s tests
 make lint              # ruff (se instalado) + scripts/analise/verificar_vazamento.py
 make adversarial       # regenera os 34 conjuntos adversariais (scripts/adversarial/, seeds fixas) em
                        # dados/adversarial/ e roda pipeline + métrica oficial em cada um (~1 min)
-make calibrar-completo # reproduz o TREINO da calibração (ADR 0007): regenera os conjuntos, roda o núcleo em
-                       # 38, treina em 37 e valida em n3_ood (fora do ajuste); falha se a tabela obtida
-                       # diferir de dados/calibracao.json (~1 min; GRAVAR=1 grava uma tabela nova)
+make calibrar-completo CACHE_LLM=saida_llm/cache_llm.jsonl
+                       # reproduz o TREINO da calibração (ADR 0007): regenera os conjuntos, roda o pipeline em
+                       # 38 com o árbitro só do cache da medição (zero chamadas, sem GPU), treina em 37 e valida
+                       # em n3_ood (fora do ajuste) + metade de r6_extrator_formas para os caminhos llm:*; falha
+                       # se a tabela obtida diferir de dados/calibracao.json (~1 min; GRAVAR=1 grava uma nova).
+                       # Sem CACHE_LLM só o núcleo roda e os caminhos llm:* ficam nos priors (a tabela
+                       # versionada desde a v1.2.4 exige o JSONL, cujo SHA-256 está em meta.cache_llm)
 
 # 4. rodar sobre os 26 documentos de desenvolvimento → saida/*.json (+ saida/rastro.jsonl)
 make rodar             # = PYTHONPATH=src python -m caca_alucinacao.cli --input dados/txt --output saida --db dados/desafio1_bracis.db

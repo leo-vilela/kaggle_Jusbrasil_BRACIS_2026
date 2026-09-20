@@ -199,3 +199,42 @@ seria ajuste ao dev.
 a tabela aprende sobretudo *n* e o prior, não a taxa de erro real — é um limite superior. Os
 conjuntos de treino e validação foram gerados pelo desenvolvedor e pelos revisores a partir da
 mesma leitura dos dados; a única evidência independente virá do conjunto cego.
+
+## Caminhos do extrator LLM treinados com o modelo real (20/09/2026, v1.2.4)
+
+**Problema.** Até a v1.2.3 os caminhos `llm:extrator:*` ficavam nos priors (0,65–0,85): o retreino
+oficial rodava o núcleo (`--arbitro nenhum`), e as decisões do `mock` nunca treinam esses caminhos
+(ADR 0003). Com o árbitro ligado (medição 2), as 64 extrações do Qwen em `r6_extrator_formas` eram
+todas certas e saíam com confiança 0,70–0,85 — Brier 0,031 nesse conjunto, contra 0,002 no resto.
+
+**Decisão.** `scripts/calibrar_completo.py --cache-llm saida_llm/cache_llm.jsonl` (`make
+calibrar-completo CACHE_LLM=…`) roda os 38 conjuntos com `--arbitro transformers` **só do cache**
+exportado da medição (`CACA_LLM_SOMENTE_CACHE=1`, zero chamadas, sem GPU, modelo e revisão de
+`modelos/revisao_fixa.env`; o script falha se algum conjunto fizer uma chamada ou ficar sem cache) e
+treina como antes — a única diferença é que o rastro passa a conter as extrações do modelo **real**,
+única evidência admitida para `llm:*`. A tabela registra a proveniência em `meta.cache_llm` (SHA-256
+do JSONL, modelo, revisão, extrações por conjunto) e só se reproduz com o mesmo arquivo (que
+acompanha a submissão, como `dados/`; nunca é versionado — contém janelas dos documentos).
+`tests/test_calibracao.py` exige que um caminho `llm:*` só saia do prior com `meta.cache_llm`
+presente e nunca receba o teto consolidado.
+
+**Validação fora da amostra dos caminhos `llm:*`.** Além de `n3_ood`, o script divide
+`r6_extrator_formas` por documento (índices pares treinam, ímpares validam; `treino_holdout_llm.log`,
+`meta.holdout_llm`) e falha se o Brier da metade de validação piorar. Resultado: 46 citações, 46
+certas, Brier **0,0296 → 0,0044**. A tabela final é a do treino completo (37 conjuntos); o holdout é
+diagnóstico. Limite do que isso prova: a metade de validação vem do mesmo gerador que a de treino —
+mede que a estimativa não depende dos documentos escolhidos, não a precisão do extrator em texto
+real (no dev e nos distratores ele emitiu 0; nos 26 documentos reais não há evidência de erro nem
+de acerto).
+
+**Efeito** (cache da medição 2, Qwen2.5-7B-Instruct `a09a354…`): 11 caminhos mudam, todos `llm:*`
+(`llm:extrator:processo:1cand` 0,85 → 0,98 [27/27]; `:0cand` 0,70 → 0,94 [16/16]; `sumula` 0,80 →
+0,938 [9/9]; `vaga` 0,75 → 0,938 [12/12]; `llm:extrator:dispositivo`, `:tema`, `:processo:multi`
+sem observação, no prior); nenhum caminho do núcleo muda (mesmas contagens: o extrator é residual).
+`r6_extrator_formas` com árbitro 1,06714 → **1,06991** (+0,00277; Brier 0,032 → 0,002); os outros 8
+conjuntos medidos e o dev ficam **byte a byte idênticos** (0 emissões), e a `submission.csv` do dev
+mantém o SHA-256 `a5f6b066…`. O ganho é pequeno por construção — o bônus de Brier vale ≤ 10 % do
+score e só toca as citações que o extrator emite — e no conjunto cego será zero se ele não emitir;
+o que muda é que, quando emitir, a confiança reportada reflete 64 decisões reais em vez de um chute.
+Se a medição 3 (ADR 0003, Qwen3.5-9B) trocar o modelo, o retreino é o mesmo comando com o novo
+`cache_llm.jsonl`.
