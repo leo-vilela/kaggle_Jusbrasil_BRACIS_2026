@@ -690,6 +690,17 @@ def validar_extracao(janela: str, saida: dict[str, Any] | None,
                     continue
                 logger.info("extrair: cadeia %s corrigida pelo texto para %s em %r", cadeia, escritas[0], texto_span)
                 cadeia = escritas[0]
+            else:
+                # A cadeia devolvida "cabe" no span pela decomposição por conector (``agravo`` + ``em`` +
+                # ``recurso especial`` = AG+RESP), mas as mesmas letras são o apelido próprio de UMA classe
+                # (ARESP) e é assim que o normalizador do núcleo as lê: a leitura canônica vence, para o
+                # extrator resolver como o regex resolveria (medição 3, ADR 0003: Qwen3.5 devolveu
+                # ``["AG", "RESP"]`` para ``agravo em recurso especial`` → ``classe_divergente`` → inventada).
+                escritas = _cadeias_escritas_no_span(sem_numero)
+                if len(escritas) == 1 and escritas[0] != cadeia and cadeia_de_classes(sem_numero) == escritas[0]:
+                    logger.info("extrair: cadeia %s lida como %s (apelido próprio vence a decomposição) em %r",
+                                cadeia, escritas[0], texto_span)
+                    cadeia = escritas[0]
             uf = _limpar_uf(item.get("uf"))
             if uf and not re.search(r"(?<![A-Z])" + uf + r"(?![A-Z])", texto_span.upper()):
                 uf = None

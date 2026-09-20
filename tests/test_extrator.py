@@ -374,6 +374,28 @@ class TestPromptMascarado(unittest.TestCase):
             {"trecho": "Súmula 7", "familia": "sumula", "numero_sumula": "7", "tribunal": "STJ"}]}, [])
         self.assertEqual([(c["trecho"], c["tribunal"]) for c in r], [("Súmula 7", None)])
 
+    def test_apelido_proprio_vence_a_decomposicao_por_conector(self) -> None:
+        """Medição 3 (Qwen3.5-9B): o modelo devolveu ``["AG", "RESP"]`` para ``agravo em recurso especial``
+        — cabe no span pela decomposição ``agravo`` + ``em`` + ``recurso especial``, mas as mesmas letras
+        são o apelido próprio de ARESP e é assim que o normalizador do núcleo as lê; a leitura canônica
+        vence (senão a resolução dava ``classe_divergente`` → inventada num registro real). ``agravo no
+        recurso especial`` não é apelido de ninguém: a cadeia devolvida fica."""
+        janela = ("Confira-se o agravo em recurso especial de número 7.777.001,\noriundo de Minas Gerais. "
+                  "Também o agravo no recurso especial de número 7.777.002 e o AgRg no REsp 7.777.003/SP.")
+        r = validar_extracao(janela, {"citacoes": [
+            {"trecho": "agravo em recurso especial de número 7.777.001", "familia": "processo",
+             "classe_cadeia": ["AG", "RESP"], "numero_digitos": "7777001", "tribunal": "STJ"},
+            {"trecho": "agravo no recurso especial de número 7.777.002", "familia": "processo",
+             "classe_cadeia": ["AG", "RESP"], "numero_digitos": "7777002"},
+            {"trecho": "AgRg no REsp 7.777.003/SP", "familia": "processo", "classe_cadeia": ["AGR", "RESP"],
+             "numero_digitos": "7777003", "uf": "SP"},
+        ]}, [])
+        self.assertEqual([(c["trecho"], c["cadeia"], c.get("uf")) for c in r], [
+            ("agravo em recurso especial de número 7.777.001", ["ARESP"], None),
+            ("agravo no recurso especial de número 7.777.002", ["AG", "RESP"], None),
+            ("AgRg no REsp 7.777.003/SP", ["AGR", "RESP"], "SP"),
+        ])
+
     def test_lista_truncada_aproveita_as_propostas_completas(self) -> None:
         """19 de 455 respostas da medição 1 estouraram o limite de tokens no meio da lista: as
         propostas completas antes do corte valem (cada uma é validada sozinha); o resto cai."""

@@ -289,8 +289,52 @@ passar nos quatro critérios **e** ficar ≥ o Qwen2.5 em todos os conjuntos (em
 certas com τ = 0) e dentro do envelope (≤ 60 s/doc de média; NF4 decodifica mais devagar que bf16 —
 o tempo é critério, não detalhe). Empate → fica o Qwen2.5 (medido, pinado em `requirements-llm.txt` e
 no `Dockerfile.llm`; o Qwen3.5 exigiria mover os pinos para transformers 5.16.1 + bitsandbytes 0.50.2
-e uma nova imagem). Resultado: *pendente — tabela preenchida quando a medição rodar
-(`saida_llm_q35/comparacao/comparacao_arbitro.json`)*.
+e uma nova imagem).
+
+**Resultado da medição 3** (20/09, RTX 5090 a 420 W, `scripts/rodar_llm_q35_wsl.cmd`; Qwen3.5-9B
+`c202236…` NF4, snapshot local hash `45a43bb4…`; carga em 40 s; 9 conjuntos, 571 respostas, 43 min;
+tabela de calibração da v1.2.2, a mesma da medição 2; `saida_llm_q35/comparacao/comparacao_arbitro.json`):
+
+| conjunto | núcleo | Qwen3.5 NF4 | Δ | LLM emitiu (certas) | s/doc (Qwen2.5 bf16) |
+|---|---|---|---|---|---|
+| dev | 1,10000 | idêntico | 0 | 0 (0) | 7,5 (7,0) |
+| n3_ood | 1,09986 | idêntico | 0 | 0 (0) | 6,3 (7,1) |
+| r2_chave_parcial | 1,09998 | idêntico | 0 | 0 (0) | 23,0 (14,0) |
+| r5_distratores_orgaos | 1,02667 | idêntico | 0 | 0 (0) | 19,1 (3,5) |
+| r5_processos_ocr_combo | 1,09945 | idêntico | 0 | 0 (0) | 17,1 (8,4) |
+| r6_extrator_distratores | 1,10000 | idêntico | 0 | 0 (0) | 29,3 (19,5) |
+| r6_extrator_formas | 0,59657 | **1,08398** | **+0,48741** | 69 (68), τ = 0 | 38,7 (24,1) |
+| ruido_n2 | 1,09866 | idêntico | 0 | 0 (0) | 18,2 (8,1) |
+| vagas | 1,08506 | idêntico | 0 | 0 (0) | 16,5 (9,4) |
+
+VEREDITO do critério: LIGAR (8 de 9 idênticos byte a byte, dev incluído; τ = 0; 0 emissões nos
+distratores; a `submission_llm.csv` do dev tem o mesmo SHA-256 `a5f6b066…` do núcleo). Contra o Qwen2.5
+no mesmo conjunto: 69 extrações contra 67 (recupera duas formas a mais) e **uma errada**, que era do
+validador, não do modelo: para `agravo em recurso especial de número N` o Qwen3.5 devolveu a cadeia
+`["AG", "RESP"]` e o span sem o `, oriundo de Minas Gerais` que o Qwen2.5 incluía; a decomposição
+`agravo` + `em` + `recurso especial` "cabia" no span pelo conector, então a regra da v1.2.1 (o texto
+corrige a cadeia) não disparava, e a resolução deu `1cand:classe_divergente:sem_uf` → `inventada` num
+registro real. Correção (v1.2.5, `validar_extracao`): quando as letras do span são o **apelido próprio**
+de uma única classe/cadeia (`agravo em recurso especial` = ARESP) e o normalizador do núcleo as lê
+assim, a leitura canônica vence a decomposição por conector — o extrator passa a resolver como o
+regex resolveria (`agravo no recurso especial`, que não é apelido de ninguém, continua AG+RESP).
+*Replay* das 571 respostas pelo validador corrigido (só do cache, sem GPU): `r6_extrator_formas`
+**1,09680**, 69 de 69 certas; os outros 8 conjuntos idênticos; o replay do cache do Qwen2.5 pelo mesmo
+validador não muda nada (64/64 no conjunto regenerado). Com a tabela da v1.2.4 (caminhos `llm:*`
+calibrados), 1,09981 — mas essa tabela foi treinada com as extrações do Qwen2.5; se o Qwen3.5 for
+adotado, o retreino é `calibrar_completo.py --cache-llm saida_llm_q35/cache_llm.jsonl`.
+
+Custo: 2–5× mais lento que o Qwen2.5 bf16 nos conjuntos densos em janelas (NF4 decodifica mais
+devagar), 7,5 s/doc no dev (documentos reais, ≈ 4 janelas/doc) — dentro do envelope de 60 s/doc; em
+`r6_extrator_formas` o orçamento interno de 30 s/doc do extrator cortou 5 janelas de 49 (44 chamadas),
+sem citação perdida. Numa GPU de 24 GB mais lenta que a 5090 (L4/A10), o orçamento cortaria mais
+janelas em documentos densos, nunca o envelope; em documentos como os do dev, ≈ 25–30 s/doc.
+
+Balanço: nos documentos reais os dois modelos produzem **a mesma saída** (0 emissões no dev, 0 nos
+distratores); a diferença só aparece nas formas que o regex não cobre, onde o Qwen3.5 recupera mais
+(69 × 67) sem erro após a correção do validador. O que a troca custa: transformers ≥ 5.16 + bitsandbytes
+na imagem de submissão (`Dockerfile.llm` hoje pina transformers 4.51.3 sobre torch 2.7.1) e o dobro do
+tempo por janela. Decisão de adoção registrada abaixo, quando tomada.
 
 ## Revisão da rodada 4 (20/09) — o árbitro é residual POR DESENHO (R3q-10)
 
