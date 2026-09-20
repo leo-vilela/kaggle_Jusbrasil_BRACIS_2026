@@ -218,13 +218,17 @@ Em seguida, para qualquer modo: `python json_to_submission.py /caminho/saida sub
 container** nos três modos, comparando cada CSV com o da medição de referência:
 
 ```bash
-bash scripts/docker_llm.sh          # build + modo A + modo B (sem GPU)          | Windows: scripts\docker_llm.cmd
-bash scripts/docker_llm.sh gpu      # build + modos A, B e C (C carrega o modelo) | Windows: scripts\docker_llm.cmd gpu
+bash scripts/docker_llm.sh              # dev:  build + modo A + modo B (sem GPU)           | Windows: scripts\docker_llm.cmd
+bash scripts/docker_llm.sh gpu          # dev:  build + modos A, B e C (C carrega o modelo)  | Windows: scripts\docker_llm.cmd gpu
+bash scripts/docker_llm.sh cego         # cego: idem, sobre dados/cego/txt, comparando com submission_cego_nucleo.csv (A)
+bash scripts/docker_llm.sh cego gpu     #       e submission_cego_llm.csv (B e C) — só DEPOIS de scripts/rodar_cego.py
 ```
 
-O argumento `gpu` **não** liga ou desliga o LLM — ele acrescenta o modo C (o modelo rodando de verdade na GPU) aos
-modos A e B, que sempre rodam. Resultado verificado: build OK; modo B → CSV idêntico (0 chamadas, 0 abstenções);
-modo C → 7,3 GB de VRAM, 100 chamadas reais ao modelo, ≈ 6 s/doc, CSV idêntico.
+Dois esclarecimentos: o argumento `gpu` **não** liga ou desliga o LLM — ele acrescenta o modo C (o modelo rodando de
+verdade na GPU) aos modos A e B, que sempre rodam; e este script **não gera** a submissão do cego — quem gera é
+`scripts/rodar_cego.py` (seção 3); ele apenas prova que a imagem reproduz os CSVs já gerados (se faltar algo, a
+mensagem de erro diz o que colocar onde). Resultado verificado no dev: build OK; modo A → CSV idêntico; modo B →
+CSV idêntico (0 chamadas, 0 abstenções); modo C → 7,3 GB de VRAM, 100 chamadas reais ao modelo, ≈ 6 s/doc, CSV idêntico.
 
 A imagem roda como root de propósito (`/data/out` é um bind mount da organização); `--user $(id -u):$(id -g)`
 funciona se a pasta de saída for gravável por esse usuário.
