@@ -8,3 +8,10 @@ safetensors==0.5.3
 sentencepiece==0.2.0
 huggingface_hub==0.31.4
 # vllm==0.9.1   # opcional (--arbitro vllm); exige build com a mesma CUDA
+#
+# Experimento Qwen3.5-9B em NF4 (ADR 0003 §Medição 3; scripts/rodar_llm_q35_wsl.cmd): a família
+# Qwen3_5ForConditionalGeneration só existe em transformers >= 5 e a quantização pede bitsandbytes.
+# O ambiente medido foi torch 2.11.0+cu128, transformers 5.16.1, bitsandbytes 0.50.2 (venv /opt/bracis).
+# Se o Qwen3.5 vencer a medição, os pinos acima (e a base do Dockerfile.llm) mudam para esse conjunto:
+# transformers==5.16.1
+# bitsandbytes==0.50.2

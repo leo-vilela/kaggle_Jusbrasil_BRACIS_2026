@@ -12,7 +12,9 @@ Variáveis reconhecidas:
 * ``CACA_CALIBRACAO`` — tabela JSON ``{caminho: confiança}``;
 * ``CACA_MODELO_DIR`` — diretório local com os pesos do árbitro LLM (snapshot
   ou cache do Hugging Face em ``<dir>/hf``); ``CACA_MODELO`` (nome/caminho do
-  modelo), ``CACA_MODELO_REVISAO`` (commit), ``CACA_LLM_LOTE``;
+  modelo), ``CACA_MODELO_REVISAO`` (commit), ``CACA_MODELO_ID`` (nome canônico
+  dos pesos para a chave do cache quando ``CACA_MODELO`` é uma pasta local),
+  ``CACA_LLM_4BIT`` (NF4), ``CACA_LLM_LOTE``;
 * ``CACA_CACHE_LLM`` — arquivo SQLite do cache das respostas do árbitro;
 * ``CACA_ARBITRO`` — backend padrão do árbitro (``nenhum`` | ``mock`` |
   ``transformers`` | ``vllm``);

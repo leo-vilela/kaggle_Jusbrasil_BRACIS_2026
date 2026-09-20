@@ -1,6 +1,6 @@
 # Caça-Alucinações — verificador de citações jurídicas (Jusbrasil × BRACIS 2026)
 
-> Estado (20/09/2026, v1.2.2): **todos os módulos prontos e testados** (591 testes, `make testar`;
+> Estado (20/09/2026, v1.2.3): **todos os módulos prontos e testados** (594 testes, `make testar`;
 > reprodução em um comando, `make reproduzir`). Núcleo determinístico só com biblioteca padrão;
 > score no conjunto de desenvolvimento **1,10000** (1,0999960; τ = 0), nos sintéticos n2/n3
 > 1,10000 / 1,09986 e nos 34 conjuntos adversariais das revisões entre 1,027 e 1,10000 (todos com
@@ -15,7 +15,9 @@
 > τ = 0 em todos, 0 emissões nos distratores e `r6_extrator_formas` 0,597 → 1,072 (+0,475; 67
 > extrações, 66 certas), a ≈ 7–24 s/doc. A submissão com o árbitro é **idêntica** à do núcleo no dev
 > (mesmo SHA-256) e se reproduz sem GPU: `make reproduzir ARBITRO=transformers
-> CACHE_LLM=saida_llm/cache_llm.jsonl` (zero chamadas ao modelo, 5 s).
+> CACHE_LLM=saida_llm/cache_llm.jsonl` (zero chamadas ao modelo, 5 s). A v1.2.3 prepara a
+> **medição 3**: o mesmo árbitro com o Qwen3.5-9B em NF4 no lugar do Qwen2.5 (`scripts\rodar_llm_q35_wsl.cmd`;
+> ADR 0003 "Medição 3") — o backend reconhece a família pelo `config.json`; nada muda nos prompts.
 
 Repositório público: <https://github.com/leo-vilela/kaggle_Jusbrasil_BRACIS_2026> (v1: núcleo determinístico +
 árbitro Qwen2.5 sem fine-tuning). A versão 2, com o LLM treinado como camada final de decisão nos casos residuais, vive
@@ -232,6 +234,18 @@ modelo): 37/38 conjuntos byte a byte iguais ao núcleo e `r6_extrator_formas` +0
 dado MANTER DESLIGADO por FPs em distratores e normalização; a v1.2.1 fechou isso na validação
 determinística (ADR 0003, "Medição 1"), não no modelo. A única extração errada da medição 2 era um
 defeito do gerador (estado por extenso diferente do registro; corrigido na v1.2.2).
+
+**Medição 3 — Qwen3.5-9B em NF4 no lugar do Qwen2.5** (v1.2.3; ADR 0003 "Medição 3"): mesmo
+árbitro, mesmos prompts e validador, só os pesos mudam. Em um clique, `scripts\rodar_llm_q35_wsl.cmd`
+(≈ 30–60 min; grava em `saida_llm_q35\`, log em `saida_llm_q35\log.txt`) — equivale a
+`python scripts/rodar_llm_local.py --modelo /opt/bracis/models/qwen35_9b --id Qwen/Qwen3.5-9B
+--revisao c202236235762e1c871ad0ccb60c8ee5ba337b9a --quatro-bits --saida saida_llm_q35`. O backend lê
+`architectures` do `config.json`: a família `*ForConditionalGeneration` (Qwen3.5) é carregada pela
+classe homônima do `transformers` (≥ 5), NF4 com `visual`/`lm_head` fora da quantização e o *chat
+template* com `enable_thinking=False`; `--id`/`--revisao` põem o nome canônico e o commit dos pesos na
+chave do cache (`CACA_MODELO_ID`), para o `cache_llm.jsonl` reproduzir sem a pasta local. O Qwen3.5 só
+substitui o Qwen2.5 se passar no critério **e** ficar ≥ o Qwen2.5 em todos os conjuntos, dentro do
+envelope de tempo (≤ 60 s/doc); empate → fica o Qwen2.5. Resultado: pendente.
 
 **Reprodução sem GPU** do que o modelo respondeu: `saida_llm/cache_llm.jsonl` (exportado ao fim;
 acompanha a submissão junto com `dados/`, **nunca versionado** — contém janelas dos documentos) +

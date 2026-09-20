@@ -780,13 +780,122 @@ class TestBackendsComDependenciasFalsas(unittest.TestCase):
                 self.kw = kw
 
         tr.BitsAndBytesConfig = BitsAndBytesConfig
+        sys.modules["bitsandbytes"] = types.ModuleType("bitsandbytes")
         os.environ["CACA_LLM_4BIT"] = "1"
         try:
             a = obter_arbitro("transformers", cache=None, revisao="r")
         finally:
             del os.environ["CACA_LLM_4BIT"]
+            sys.modules.pop("bitsandbytes", None)
         self.assertIn("nf4", a.assinatura)
-        self.assertTrue(self.chamadas["model"][2]["quantization_config"].kw["load_in_4bit"])
+        qc = self.chamadas["model"][2]["quantization_config"].kw
+        self.assertTrue(qc["load_in_4bit"])
+        self.assertNotIn("llm_int8_skip_modules", qc)                 # Qwen2.5: configuração da ADR 0003, intocada
+        self.assertEqual(a.familia, "causal")
+
+    def _snapshot_qwen35(self, d: str) -> Path:
+        """Pasta local com o config.json de um modelo da família Qwen3.5 (multimodal, com modo de raciocínio)."""
+        pasta = Path(d) / "qwen35_falso"
+        pasta.mkdir()
+        (pasta / "config.json").write_text(json.dumps({
+            "architectures": ["Qwen3_5ForConditionalGeneration"], "model_type": "qwen3_5",
+            "text_config": {"model_type": "qwen3_5_text", "num_hidden_layers": 2}}), encoding="utf-8")
+        (pasta / "model-00001-of-00001.safetensors").write_bytes(b"\0" * 16)
+        return pasta
+
+    def test_familia_condicional_qwen35_nf4_sem_pensar_e_id_na_chave(self) -> None:
+        """Qwen3.5: classe homônima do transformers, NF4 sem ``visual``/``lm_head``, SDPA, template com
+        ``enable_thinking=False``; a assinatura é a mesma da família causal e ``CACA_MODELO_ID`` + revisão
+        substituem o caminho local na chave do cache."""
+        import os
+        tr = sys.modules["transformers"]
+        tr.__version__ = "5.16.1"
+        chamadas = self.chamadas
+
+        class BitsAndBytesConfig:
+            def __init__(self, **kw: Any) -> None:
+                self.kw = kw
+
+        class Qwen3_5ForConditionalGeneration:
+            @staticmethod
+            def from_pretrained(m: str, device_map: str | None = None, **kw: Any) -> Any:
+                chamadas["model_q35"] = (m, device_map, kw)
+                return _ModeloFalso()
+
+        class _TokPensante(_TokenizadorFalso):
+            chat_template = "{% if enable_thinking is defined and not enable_thinking %}<think></think>{% endif %}"
+            vistos: list[dict[str, Any]] = []
+
+            def apply_chat_template(self, msgs: list[dict[str, str]], tokenize: bool = False,
+                                    add_generation_prompt: bool = True, **kw: Any) -> str:
+                self.vistos.append(kw)
+                return msgs[1]["content"]
+
+        class AutoTokenizer:
+            @staticmethod
+            def from_pretrained(m: str, revision: str | None = None, local_files_only: bool = False) -> Any:
+                return _TokPensante()
+
+        tr.BitsAndBytesConfig = BitsAndBytesConfig
+        tr.Qwen3_5ForConditionalGeneration = Qwen3_5ForConditionalGeneration
+        tr.AutoTokenizer = AutoTokenizer
+        sys.modules["bitsandbytes"] = types.ModuleType("bitsandbytes")
+        with tempfile.TemporaryDirectory() as d:
+            pasta = self._snapshot_qwen35(d)
+            os.environ["CACA_LLM_4BIT"] = "1"
+            try:
+                a = obter_arbitro("transformers", cache=":memory:", modelo=str(pasta), revisao="c2022362",
+                                  modelo_id="Qwen/Qwen3.5-9B")
+                b = obter_arbitro("transformers", cache=":memory:", modelo=str(pasta), revisao="c2022362")
+            finally:
+                del os.environ["CACA_LLM_4BIT"]
+                sys.modules.pop("bitsandbytes", None)
+            self.assertEqual(a.familia, "condicional")
+            self.assertEqual(a.arquitetura, "Qwen3_5ForConditionalGeneration")
+            m, device_map, kw = chamadas["model_q35"]
+            self.assertEqual(m, str(pasta))
+            self.assertEqual(kw["attn_implementation"], "sdpa")
+            self.assertFalse(kw["use_kernels"])
+            self.assertNotIn("revision", kw)                                          # pasta local: sem revision no load
+            self.assertEqual(kw["quantization_config"].kw["llm_int8_skip_modules"], ["lm_head", "visual"])
+            self.assertEqual(kw["quantization_config"].kw["bnb_4bit_quant_type"], "nf4")
+            self.assertTrue(a._sem_pensar)
+            self.assertEqual(a.assinatura, b.assinatura)                               # família não entra na assinatura
+            self.assertTrue(a.assinatura.startswith("transformers|nf4|greedy|lote=1|"))
+            _TokPensante.vistos.clear()
+            r = a.normalizar_citacao("REsp 1.9SO.OO1/SP", "no REsp 1.9SO.OO1/SP, que")
+            self.assertEqual(r["numero_digitos"], "1950001")
+            self.assertEqual(_TokPensante.vistos[-1], {"enable_thinking": False})
+            # chave do cache: com --id o nome canônico substitui o caminho (reprodução sem a pasta)
+            ped = a._chave(Pedido("normalizar", {"x": 1}, [{"role": "system", "content": ""}, {"role": "user", "content": ""}]))
+            self.assertEqual(a.modelo_chave, "Qwen/Qwen3.5-9B")
+            self.assertEqual(b.modelo_chave, str(pasta))
+            self.assertEqual(ped, chave_cache("Qwen/Qwen3.5-9B", "c2022362", prompts.PROMPT_ID, "normalizar", {"x": 1}, a.assinatura))
+            self.assertNotEqual(ped, b._chave(Pedido("normalizar", {"x": 1}, [{"role": "system", "content": ""}, {"role": "user", "content": ""}])))
+            self.assertEqual(a.revisao, "c2022362")
+            self.assertEqual(a.estatisticas()["modelo_id"], "Qwen/Qwen3.5-9B")
+
+    def test_familia_condicional_exige_transformers_com_a_classe(self) -> None:
+        tr = sys.modules["transformers"]
+        tr.__version__ = "4.51.3"
+        with tempfile.TemporaryDirectory() as d:
+            pasta = self._snapshot_qwen35(d)
+            with self.assertRaises(ErroDependencia) as ctx:
+                obter_arbitro("transformers", cache=None, modelo=str(pasta), revisao="r")
+        self.assertIn("Qwen3_5ForConditionalGeneration", str(ctx.exception))
+
+    def test_bf16_usa_dtype_no_transformers_5(self) -> None:
+        tr = sys.modules["transformers"]
+        tr.__version__ = "5.16.1"
+        obter_arbitro("transformers", cache=None, revisao="r")
+        kw = self.chamadas["model"][2]
+        self.assertEqual(kw["dtype"], "bf16")
+        self.assertNotIn("torch_dtype", kw)
+        self.assertEqual(backends._kw_dtype(types.SimpleNamespace(__version__="4.51.3")), "torch_dtype")
+        self.assertEqual(backends._kw_dtype(types.SimpleNamespace()), "torch_dtype")
+        self.assertEqual(backends._familia(""), "causal")
+        self.assertEqual(backends._familia("Qwen2ForCausalLM"), "causal")
+        self.assertEqual(backends._familia("Qwen3_5ForConditionalGeneration"), "condicional")
 
     def test_vllm_utilizacao_e_geracao(self) -> None:
         vllm = types.ModuleType("vllm")

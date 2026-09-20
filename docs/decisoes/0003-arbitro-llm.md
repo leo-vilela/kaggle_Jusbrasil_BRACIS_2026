@@ -268,6 +268,30 @@ cache é abstenção (o documento fica como o regex deixou), nunca uma chamada.
 prompt ≈ 1,2k tokens e resposta ≤ 480 tokens: 5090 ≈ 2–3 s por chamada (≈ 15 s/doc), L4 ≈ 6–10 s
 (≈ 40–60 s/doc, no limite — o orçamento de 30 s/doc corta as janelas menos promissoras). Medir.
 
+**Medição 3 — outro modelo no mesmo lugar: Qwen3.5-9B em NF4** (v1.2.3, `scripts/rodar_llm_q35_wsl.cmd`).
+Pergunta: um modelo mais novo e maior, quantizado, extrai mais formas que o Qwen2.5-7B bf16 sem emitir
+onde não há citação e dentro do envelope de tempo? O desenho não muda em nada — mesmos prompts
+(`2026-09-20.3`), mesmo validador, mesma calibração, mesmos 9 conjuntos e o mesmo critério (a)–(d); só
+os pesos. O backend (`llm/backends.py`) lê `architectures` do `config.json`: `*ForCausalLM` (Qwen2.5)
+segue o caminho da medição 2, byte a byte; `*ForConditionalGeneration` (Qwen3.5, multimodal) é
+carregada pela classe homônima do `transformers` (≥ 5), SDPA, sem kernels do Hub, NF4 com dupla
+quantização e cálculo bf16 mantendo `visual` e `lm_head` fora da quantização, e o *chat template* com
+`enable_thinking=False` (sem bloco de raciocínio: a resposta é o JSON, direto) — o mesmo carregamento
+validado no decisor da v2 (ADR 0008). A assinatura do backend não muda com a família (a família é
+função do modelo, que já está na chave do cache); `--id Qwen/Qwen3.5-9B --revisao c202236…` põem o nome
+canônico e o commit dos pesos na chave, no lugar da pasta local, para o `cache_llm.jsonl` reproduzir
+depois com `CACA_MODELO=Qwen/Qwen3.5-9B` (`CACA_MODELO_ID`). Pesos: snapshot local em
+`/opt/bracis/models/qwen35_9b` (= `Qwen/Qwen3.5-9B@c202236235762e1c871ad0ccb60c8ee5ba337b9a`,
+Apache-2.0); ambiente torch 2.11.0+cu128, transformers 5.16.1, bitsandbytes 0.50.2.
+
+Decisão pela medição, lado a lado com a tabela da medição 2: o Qwen3.5 só substitui o Qwen2.5 se
+passar nos quatro critérios **e** ficar ≥ o Qwen2.5 em todos os conjuntos (em `r6_extrator_formas`, mais
+certas com τ = 0) e dentro do envelope (≤ 60 s/doc de média; NF4 decodifica mais devagar que bf16 —
+o tempo é critério, não detalhe). Empate → fica o Qwen2.5 (medido, pinado em `requirements-llm.txt` e
+no `Dockerfile.llm`; o Qwen3.5 exigiria mover os pinos para transformers 5.16.1 + bitsandbytes 0.50.2
+e uma nova imagem). Resultado: *pendente — tabela preenchida quando a medição rodar
+(`saida_llm_q35/comparacao/comparacao_arbitro.json`)*.
+
 ## Revisão da rodada 4 (20/09) — o árbitro é residual POR DESENHO (R3q-10)
 
 Medido com `--arbitro mock`: **0 chamadas** ao modelo nos 26 documentos do dev e nos 40 do

@@ -8,7 +8,13 @@
   com ``CACA_LLM_4BIT=1`` —, decodificação **greedy** (``do_sample=False``),
   ``max_new_tokens`` pequeno, *chat template* oficial, semente fixa e limite de
   VRAM por processo (``torch.cuda.set_per_process_memory_fraction``) para nunca
-  ultrapassar 24 GB numa GPU maior (RTX 5090 = 32 GB).
+  ultrapassar 24 GB numa GPU maior (RTX 5090 = 32 GB). A família do modelo vem
+  de ``architectures`` no ``config.json``: ``*ForCausalLM`` (Qwen2.5) segue o
+  caminho medido na ADR 0003; ``*ForConditionalGeneration`` (Qwen3.5, multimodal)
+  é carregada pela classe homônima do ``transformers``, com ``visual`` e ``lm_head``
+  fora da quantização NF4 e o *chat template* com ``enable_thinking=False`` — os
+  mesmos prompts, o mesmo validador. Nada disso entra na assinatura: a família é
+  função do modelo, que já está na chave do cache.
 * :class:`VLLMArbitro` (opcional): ``gpu_memory_utilization`` calculado para o
   teto de 24 GB, ``temperature=0``, *guided decoding* JSON quando disponível.
 
@@ -394,11 +400,55 @@ def _bool_env(nome: str, padrao: bool = False) -> bool:
     return v.strip().lower() in ("1", "true", "sim", "yes", "on")
 
 
+def _versao_maior(modulo: Any) -> int:
+    """Componente maior de ``modulo.__version__`` (0 quando ausente ou ilegível)."""
+    try:
+        return int(str(getattr(modulo, "__version__", "0")).split(".")[0])
+    except (TypeError, ValueError):
+        return 0
+
+
+def _kw_dtype(transformers_mod: Any) -> str:
+    """Nome do argumento de precisão em ``from_pretrained``: ``dtype`` (transformers ≥ 5) ou ``torch_dtype``."""
+    return "dtype" if _versao_maior(transformers_mod) >= 5 else "torch_dtype"
+
+
+def _arquitetura(modelo: str, revisao: str | None, offline: bool) -> str:
+    """Primeira entrada de ``architectures`` no ``config.json`` do modelo (``""`` quando não dá para ler).
+
+    Pasta local: lê o arquivo; id do Hub: ``AutoConfig`` (sem baixar pesos). Um erro aqui não derruba
+    o árbitro — a família cai no caminho clássico (``AutoModelForCausalLM``), que é o padrão.
+    """
+    p = Path(modelo)
+    try:
+        if p.is_dir() and (p / "config.json").is_file():
+            cfg = json.loads((p / "config.json").read_text(encoding="utf-8"))
+            return str((cfg.get("architectures") or [""])[0] or "")
+    except (OSError, ValueError) as exc:
+        logger.warning("config.json ilegível em %s: %s", modelo, exc)
+        return ""
+    try:
+        import transformers
+        AutoConfig = getattr(transformers, "AutoConfig", None)
+        if AutoConfig is None:
+            return ""
+        cfg = AutoConfig.from_pretrained(modelo, revision=revisao or None, local_files_only=offline)
+        return str((getattr(cfg, "architectures", None) or [""])[0] or "")
+    except Exception as exc:  # noqa: BLE001 - qualquer falha de rede/cache cai no caminho clássico
+        logger.warning("não foi possível ler a arquitetura de %s (%s); assumindo *ForCausalLM", modelo, exc)
+        return ""
+
+
+def _familia(arquitetura: str) -> str:
+    """``"causal"`` (``*ForCausalLM`` ou desconhecida) ou ``"condicional"`` (``*ForConditionalGeneration``)."""
+    return "condicional" if arquitetura.endswith("ForConditionalGeneration") else "causal"
+
+
 # ---------------------------------------------------------------------------
 # transformers
 # ---------------------------------------------------------------------------
 class TransformersArbitro(ArbitroBase):
-    """Qwen2.5-7B-Instruct via ``transformers`` (bf16 ou NF4), greedy, com lote."""
+    """Qwen2.5-7B-Instruct (ou outro Qwen, ver ``_familia``) via ``transformers`` (bf16 ou NF4), greedy, com lote."""
 
     nome = "transformers"
 
@@ -426,6 +476,7 @@ class TransformersArbitro(ArbitroBase):
         lote: int = 1,
         max_new_tokens: dict[str, int] | None = None,
         somente_cache: bool = False,
+        modelo_id: str = "",
         **_: Any,
     ) -> None:
         # lote=1 por padrão (revisão rodada 2, R3b-08): a resolução consulta o árbitro um achado
@@ -435,18 +486,24 @@ class TransformersArbitro(ArbitroBase):
         if not somente_cache:
             self.verificar_dependencias()
             import torch
+            import transformers
             from transformers import AutoModelForCausalLM, AutoTokenizer
         else:
-            torch = AutoModelForCausalLM = AutoTokenizer = None  # reprodução sem GPU: só o cache responde
+            torch = transformers = AutoModelForCausalLM = AutoTokenizer = None  # reprodução sem GPU: só o cache
         self.quatro_bits = _bool_env("CACA_LLM_4BIT") if quatro_bits is None else quatro_bits
         self.seed = int(seed)
         self.lote = max(1, int(lote))
         self.max_new_tokens = dict(prompts.MAX_TOKENS_NOVOS, **(max_new_tokens or {}))
+        # A assinatura NÃO muda com a família do modelo (Qwen2.5 → mesma string da ADR 0003, chaves do
+        # cache preservadas); a família é função do modelo, que já está na chave.
         assinatura = f"transformers|{'nf4' if self.quatro_bits else 'bf16'}|greedy|lote={self.lote}|" + \
             ",".join(f"{k}={v}" for k, v in sorted(self.max_new_tokens.items()))
         super().__init__(modelo=modelo, revisao=revisao, cache=cache, assinatura=assinatura,
-                         somente_cache=somente_cache)
+                         somente_cache=somente_cache, modelo_id=modelo_id)
         self._torch = torch
+        self._sem_pensar = False
+        self.arquitetura = ""
+        self.familia = "causal"
         if somente_cache:
             self._model = self._tok = None
             logger.info("árbitro transformers em modo somente_cache: modelo não carregado")
@@ -468,33 +525,61 @@ class TransformersArbitro(ArbitroBase):
         kwargs: dict[str, Any] = {"local_files_only": _offline()}
         if revisao and not Path(modelo).exists():
             kwargs["revision"] = revisao
+        self.arquitetura = _arquitetura(modelo, kwargs.get("revision"), kwargs["local_files_only"])
+        self.familia = _familia(self.arquitetura)
+        if self.familia == "causal":
+            classe = AutoModelForCausalLM
+            pular: list[str] | None = None
+        else:
+            # Qwen3.5 e afins (multimodais, ``Qwen3_5ForConditionalGeneration``): a classe homônima do
+            # transformers, SDPA, sem kernels baixados do Hub; o encoder visual e a cabeça ficam fora da
+            # quantização NF4 — o mesmo carregamento validado no decisor da v2 (ADR 0008).
+            classe = getattr(transformers, self.arquitetura, None)
+            if classe is None:
+                raise ErroDependencia(
+                    f"transformers {getattr(transformers, '__version__', '?')} não conhece {self.arquitetura}; "
+                    "a família Qwen3.5 exige transformers >= 5 (ver requirements-llm.txt)")
+            pular = ["lm_head", "visual"]
+            kwargs.update(attn_implementation="sdpa", use_kernels=False, low_cpu_mem_usage=True)
         if self.quatro_bits:
             from transformers import BitsAndBytesConfig
+            try:
+                import bitsandbytes  # noqa: F401
+            except ImportError as exc:  # pragma: no cover - depende do ambiente
+                raise ErroDependencia("CACA_LLM_4BIT=1 exige o pacote bitsandbytes (pip install bitsandbytes)") from exc
+            extra = {"llm_int8_skip_modules": pular} if pular else {}
             kwargs["quantization_config"] = BitsAndBytesConfig(
                 load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant=True,
-                bnb_4bit_compute_dtype=torch.bfloat16)
+                bnb_4bit_compute_dtype=torch.bfloat16, **extra)
         else:
-            kwargs["torch_dtype"] = torch.bfloat16
-        logger.info("carregando %s (rev=%s, %s) em %s", modelo, revisao or "?",
-                    "nf4" if self.quatro_bits else "bf16", self.dispositivo)
+            kwargs[_kw_dtype(transformers)] = torch.bfloat16
+        logger.info("carregando %s (rev=%s, %s, %s) em %s", modelo, revisao or "?",
+                    "nf4" if self.quatro_bits else "bf16", self.arquitetura or "AutoModelForCausalLM", self.dispositivo)
         self._tok = AutoTokenizer.from_pretrained(modelo, revision=kwargs.get("revision"),
                                                   local_files_only=kwargs["local_files_only"])
         self._tok.padding_side = "left"
         if self._tok.pad_token is None:
             self._tok.pad_token = self._tok.eos_token
-        self._model = AutoModelForCausalLM.from_pretrained(modelo, device_map=self.dispositivo, **kwargs)
+        # Modelos com modo de raciocínio (Qwen3.x): o template aceita ``enable_thinking`` — desligado, o
+        # modelo responde o JSON direto (sem bloco <think>, que estouraria ``max_new_tokens``).
+        self._sem_pensar = "enable_thinking" in (getattr(self._tok, "chat_template", None) or "")
+        self._model = classe.from_pretrained(modelo, device_map=self.dispositivo, **kwargs)
         self._model.eval()
         self._model.generation_config.do_sample = False
         if torch.cuda.is_available():
             usado = torch.cuda.memory_allocated() / 1024 ** 3
-            logger.info("modelo carregado; VRAM alocada: %.1f GB", usado)
+            logger.info("modelo carregado (%s, pensar=%s); VRAM alocada: %.1f GB", self.familia,
+                        "off" if self._sem_pensar else "n/a", usado)
+
+    def _texto_prompt(self, mensagens: list[dict[str, str]]) -> str:
+        extra: dict[str, Any] = {"enable_thinking": False} if self._sem_pensar else {}
+        return self._tok.apply_chat_template(mensagens, tokenize=False, add_generation_prompt=True, **extra)
 
     def _gerar(self, pedidos: list[Pedido]) -> list[str]:
         if self._model is None or self._tok is None:
             raise RuntimeError("modelo não carregado (somente_cache)")
         torch = self._torch
-        textos = [self._tok.apply_chat_template(p.mensagens, tokenize=False, add_generation_prompt=True)
-                  for p in pedidos]
+        textos = [self._texto_prompt(p.mensagens) for p in pedidos]
         # ordena por comprimento (menos padding) mas devolve na ordem original
         ordem = sorted(range(len(pedidos)), key=lambda i: (len(textos[i]), i))
         saida: list[str] = [""] * len(pedidos)
@@ -638,7 +723,8 @@ def obter_arbitro(nome: str | None, **cfg: Any) -> ArbitroBase | None:
     """Instancia o árbitro pelo nome: ``nenhum``/``None`` → ``None``; ``mock``; ``transformers``; ``vllm``.
 
     ``cfg`` sobrepõe os padrões lidos do ambiente: ``modelo`` (``CACA_MODELO``),
-    ``revisao`` (``CACA_MODELO_REVISAO``), ``cache`` (:class:`CacheLLM`, caminho,
+    ``revisao`` (``CACA_MODELO_REVISAO``), ``modelo_id`` (``CACA_MODELO_ID``: nome canônico dos pesos
+    para a chave do cache quando ``modelo`` é uma pasta local), ``cache`` (:class:`CacheLLM`, caminho,
     ``":memory:"`` ou ``None`` para desligar; padrão ``CACA_CACHE_LLM``),
     ``quatro_bits`` (``CACA_LLM_4BIT``), ``lote`` (``CACA_LLM_LOTE``),
     ``limite_vram_gb``, ``seed``, ``somente_cache`` (também ``CACA_LLM_SOMENTE_CACHE=1``: o modelo não é
@@ -668,6 +754,7 @@ def obter_arbitro(nome: str | None, **cfg: Any) -> ArbitroBase | None:
         cache = CacheLLM(cache_cfg)
     cfg.setdefault("modelo", config.modelo_llm(MODELO_PADRAO))
     cfg.setdefault("revisao", config.revisao_llm())
+    cfg.setdefault("modelo_id", os.environ.get("CACA_MODELO_ID", "").strip())
     if "lote" not in cfg and config.lote_llm():
         cfg["lote"] = config.lote_llm()
     importar = os.environ.get("CACA_LLM_CACHE_IMPORTAR", "").strip()

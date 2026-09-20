@@ -746,8 +746,13 @@ class ArbitroBase:
     nome: str = "base"
 
     def __init__(self, modelo: str, revisao: str, cache: CacheLLM | None = None,
-                 assinatura: str = "", somente_cache: bool = False) -> None:
+                 assinatura: str = "", somente_cache: bool = False, modelo_id: str = "") -> None:
         self.modelo = modelo
+        # ``modelo_id``: nome canônico dos pesos (``Qwen/Qwen3.5-9B``) quando ``modelo`` é uma pasta local —
+        # é ele, com ``revisao``, que entra na chave do cache, para que o JSONL exportado da medição
+        # reproduza a saída depois com CACA_MODELO=<id> (sem a pasta). Vazio: a chave usa ``modelo``.
+        self.modelo_id = (modelo_id or "").strip()
+        self.modelo_chave = self.modelo_id or modelo
         self.revisao = revisao or ""
         self.assinatura = assinatura
         self.cache = cache
@@ -771,7 +776,7 @@ class ArbitroBase:
 
     # -- infraestrutura -------------------------------------------------------
     def _chave(self, pedido: Pedido) -> str:
-        return chave_cache(self.modelo, self.revisao, prompts.PROMPT_ID, pedido.operacao,
+        return chave_cache(self.modelo_chave, self.revisao, prompts.PROMPT_ID, pedido.operacao,
                            pedido.entrada, self.assinatura)
 
     def _responder_lote(self, pedidos: list[Pedido]) -> list[str | None]:
@@ -799,7 +804,7 @@ class ArbitroBase:
                     bruto = None  # resposta vazia = falha transitória: abstém e não grava no cache
                 respostas[i] = bruto
                 if bruto is not None and self.cache is not None:
-                    self.cache.guardar(chaves[i], modelo=self.modelo, revisao=self.revisao,
+                    self.cache.guardar(chaves[i], modelo=self.modelo_chave, revisao=self.revisao,
                                        prompt_versao=prompts.PROMPT_ID, operacao=pedidos[i].operacao,
                                        entrada=pedidos[i].entrada, resposta_bruta=bruto,
                                        assinatura=self.assinatura)
@@ -929,7 +934,7 @@ class ArbitroBase:
         return saida
 
     def estatisticas(self) -> dict[str, Any]:
-        return {"backend": self.nome, "modelo": self.modelo, "revisao": self.revisao,
+        return {"backend": self.nome, "modelo": self.modelo, "modelo_id": self.modelo_id, "revisao": self.revisao,
                 "prompt_versao": prompts.PROMPT_VERSAO, "assinatura": self.assinatura,
                 "chamadas_ao_modelo": self.chamadas, "abstencoes": self.abstencoes,
                 "cache": self.cache.estatisticas() if self.cache is not None else None}
