@@ -1,0 +1,9 @@
+# Núcleo do verificador: SOMENTE biblioteca padrão do Python (>= 3.10).
+# Nenhuma dependência é instalada no container da organização (Dockerfile).
+#
+# Para avaliar localmente com o kaggle_metric.py oficial (scripts/avaliar.py):
+#   pip install -r requirements.txt --extra-index-url ... (ou apenas: pip install numpy pandas)
+# Pinos exatos = versões usadas na avaliação local de referência (rodada 3, R3e-10); a métrica
+# oficial só usa numpy.mean e pandas.DataFrame básicos, qualquer 1.26+/2.1+ dá o mesmo resultado.
+numpy==2.4.4
+pandas==3.0.2

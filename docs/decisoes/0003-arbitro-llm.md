@@ -1,0 +1,184 @@
+# ADR 0003 — Árbitro LLM residual (Qwen2.5-7B-Instruct, pesos abertos)
+
+Data: 16/09/2026. Estado: aceita (backend real ainda sem revisão fixa — ver "Pendências").
+Escopo: `src/caca_alucinacao/llm/` (`arbitro.py`, `prompts.py`, `backends.py`, `cache.py`),
+`tests/test_llm.py`, `scripts/{baixar_modelo.sh,limitar_gpu.ps1,avaliar_arbitro.py}`,
+`MANIFESTO_MODELO.md`.
+
+## Contexto
+
+A classe de uma citação é função determinística da consulta por identificador à base
+fechada (docs/00 §1; docs/03 §0: 100% das `incompleta` são `vaga`, 0/42 `inventada` têm
+número próprio, 77/77 `real` resolvem por dígitos idênticos). O núcleo regex + índice decide
+tudo isso sem modelo. Sobram três situações residuais em que o núcleo **não tem informação
+suficiente** e um chute custa caro na métrica (`inventada→real` = FN + FP + τ):
+
+1. OCR pesado no número (≥ 2 letras confundíveis, letras em maioria no grupo) — a
+   normalização determinística se recusa a converter (docs/04, "Riscos": um falso positivo
+   aqui é exatamente o erro caro).
+2. Número próprio de ≥ 2 registros com cabeçalhos **diferentes** (6 dos 77 grupos ambíguos;
+   docs/04 b) em que só o contexto (ano, relator, cadeia) distingue.
+3. Candidatos "fracos" de padrões amplos (sigla desconhecida + número; molde de `vaga`
+   inédito) em que o detector não sabe se há citação nem onde ela termina.
+
+A proposta prévia usava um LLM como classificador/cross-encoder sobre BM25 (docs/00 §3):
+invalidada porque devolve "quem cita", não "quem é", e porque a classe não é uma decisão
+semântica.
+
+## Decisões
+
+1. **Árbitro, não classificador.** O modelo nunca emite `real/inventada/incompleta` nem
+   `id_canonico`. Ele (a) normaliza um identificador que o pipeline **reconsulta** no índice;
+   (b) escolhe um índice numa lista que o índice já devolveu; (c) confirma/descarta e ajusta as
+   fronteiras de um span dentro de uma janela. Em todos os casos a decisão final continua sendo
+   a consulta determinística. Consequência: o pior dano possível de uma resposta errada é um
+   FP isolado (id errado entre duplicatas ou span espúrio), nunca um `inventada→real` por
+   número inventado — a validação `digitos_compativeis` garante que os dígitos devolvidos só
+   diferem do trecho por trocas letra→dígito do mapa de OCR (dígito ASCII nunca é alterado,
+   removido ou inserido; a UF é separada antes).
+2. **Abstenção em qualquer falha.** Dependência ausente, exceção do modelo, resposta vazia,
+   JSON inválido, campo fora do domínio, span fora da janela ⇒ `None`. Nunca uma exceção sobe
+   até o documento (ADR 0002: exceção numa citação a omite; aqui nem isso acontece — o caminho
+   determinístico segue). O Protocol `Arbitro` e a classe base `ArbitroBase` concentram
+   parsing, validação e cache; backends só implementam `_gerar(pedidos) -> list[str]`.
+3. **`Qwen/Qwen2.5-7B-Instruct`, revisão fixa, sem fine-tuning.** Motivos: pesos abertos com
+   licença Apache-2.0 (sem cláusulas de uso); 7B em bf16 (≈ 15,2 GB) cabe com folga nos 24 GB
+   com KV cache; treinado com bastante português e JSON estruturado (segue instruções de
+   "só JSON" com confiabilidade alta em modelos instruct da família); disponível também em
+   AWQ oficial (`Qwen/Qwen2.5-7B-Instruct-AWQ`, 5,6 GB) como contingência de VRAM; suportado
+   por `transformers` estável e por vLLM. Descartados: modelos > 14B (não cabem em bf16 e a
+   quantização traz não-determinismo adicional entre kernels); modelos < 3B (fraqueza em
+   seguir regras negativas — o que é distrator — que são o cerne dos prompts); modelos com
+   licença restritiva (Llama 3.x exige aceitação de termos e atribuição; Gemma tem termos
+   próprios). Qwen3-8B seria alternativa equivalente, porém com "modo pensamento" que precisa
+   ser desligado e gasta tokens; o 2.5 é mais previsível para saída curta.
+4. **Decodificação determinística e reproduzível por cache.** Greedy (`do_sample=False`,
+   `temperature=0`), semente fixa, `max_new_tokens` pequeno, chat template oficial. Toda
+   pergunta é cacheada em SQLite pela chave
+   `sha256(modelo | revisão | PROMPT_VERSAO | assinatura do backend | operação | entrada canônica)`;
+   o cache guarda a resposta **bruta** e o resultado validado, exporta/importa JSONL e roda em
+   `somente_cache` (reprodução da submissão sem GPU). Mudança em prompt ⇒ nova `PROMPT_VERSAO`
+   ⇒ nova chave.
+5. **Prompts em português, com regras explícitas e few-shot sintético.** Sistema comum
+   (classe/número/UF/tribunal, distratores, moldes de `vaga`, fronteiras) + instruções por
+   operação + exemplos inventados (nenhum número/nome do gabarito ou da base) + pedido de JSON
+   puro. `classificar_span` pede o **texto literal** do span (o modelo é ruim em offsets); os
+   offsets são calculados localizando o texto na janela, com aparo determinístico de artigo
+   inicial e pontuação final (regra geral do gabarito, docs/03 §1).
+6. **Envelope de 24 GB imposto em software.** `transformers`:
+   `torch.cuda.set_per_process_memory_fraction(24 GB / total)` (5090 → 0,75); vLLM:
+   `gpu_memory_utilization = 24·0,92 / total`. `scripts/limitar_gpu.ps1` limita a potência da
+   5090 a 450 W no Windows (no WSL o `nvidia-smi -pl` não funciona) para aproximar o
+   comportamento térmico de uma 4090/L4 — não afeta VRAM.
+7. **Uso residual, gatilhos estreitos.** Ver "Integração" abaixo. O árbitro é opcional em
+   runtime (`--arbitro nenhum`), o Mock heurístico (`--arbitro mock`, sem modelo) é o fallback e
+   também roda nos testes pelo mesmo caminho de parsing/validação/cache.
+
+## Riscos e mitigações
+
+| Risco | Mitigação |
+|---|---|
+| Não-determinismo bf16 entre GPUs (L4/A10/4090 × 5090): ordem de redução, kernels diferentes, *batching* com padding | respostas curtas e estruturadas (a variação numérica raramente muda o argmax de um JSON de 30 tokens); validação estrita; cache exportado com a submissão (`somente_cache`); uso residual — a saída do pipeline depende do modelo em ≈ 0–3 citações por documento; lote pequeno (≤ 4) ordenado por comprimento; TF32 desligado; `CUBLAS_WORKSPACE_CONFIG=:4096:8` no Dockerfile |
+| Resposta plausível mas errada em `normalizar` | só trocas letra→dígito do mapa; resultado reconsultado no índice (0 candidatos ⇒ `inventada`, como antes) |
+| Chute em `escolher` entre duplicatas idênticas | o pipeline só chama com cabeçalhos diferentes; sem critério o prompt manda devolver `null`; erro custa 1 FP (igual ao chute determinístico) |
+| `classificar_span` ampliando/deslocando spans | span precisa ser substring literal da janela, sobrepor o candidato, ≤ 300 chars; artigo/pontuação aparados; abstenção mantém o span original |
+| Latência (≤ 60 s/doc em L4) | prompts de 1,5–2,2k tokens (sistema + few-shot + janela de 900 chars), saída ≤ 160 tokens; cache; lote; chamadas só nos gatilhos; pior caso medido em `scripts/avaliar_arbitro.py` |
+| VRAM > 24 GB na 5090 | fração de memória por processo / `gpu_memory_utilization`; `CACA_LLM_4BIT=1` como contingência |
+| Revisão do modelo não registrada | revisão fixa versionada em `modelos/revisao_fixa.env` (= MANIFESTO = padrão do `Dockerfile.llm`); `ArbitroBase` recusa (`ErroDependencia`) `CACA_MODELO_REVISAO` vazia; `baixar_modelo.sh` falha se o commit resolvido difere da revisão fixa pedida e grava `modelos/manifesto_modelo.json` |
+| Dependências pesadas quebrando o núcleo | imports tardios; `ErroDependencia` (ImportError) só ao instanciar; núcleo continua sem dependências |
+
+## Integração (gatilhos — para `resolucao.py` e `deteccao/`)
+
+* `normalizar_citacao(trecho, contexto)` — chamar quando, para um achado `processo`,
+  `digitos_do_identificador(trecho) == ""` **ou** (há dígitos, 0 candidatos no índice **e** o
+  trecho sem UF tem ≥ 2 letras confundíveis coladas a dígitos/pontuação). Se devolver dict com
+  `eh_citacao=True`, reconsultar `candidatos_por_numero_e_classe(r["digitos_canonicos"],
+  " ".join(r["classe_cadeia"]) or None, r["tribunal"], r["uf"])` e seguir o caminho normal
+  (`caminho="processo:llm_normalizado:<n>candidatos"`, confiança rebaixada). `eh_citacao=False`
+  ⇒ o detector pode descartar o achado (ou manter `inventada`, a critério da calibração).
+  `None` ⇒ segue como se o árbitro não existisse.
+* `escolher_candidato(trecho, contexto, candidatos)` — só depois de tribunal → UF → cadeia
+  exata → classe principal, com ≥ 2 candidatos cujos `cabecalho(600)` diferem (docs/04 h.3-d).
+  `candidatos` via `llm.candidato_de_registro(registro, base.cabecalho(registro.documento_id))`.
+  Índice ⇒ `real` com `caminho="processo:llm_escolha"`; `None` ⇒ escolha determinística (menor
+  `documento_id`, confiança ≈ 0,5).
+* `classificar_span(trecho, janela, inicio_rel)` — para achados com `forca` abaixo do limiar
+  (padrões amplos), com `janela = texto[max(0, ini-200):fim+200]` e `inicio_rel = ini - início da
+  janela`. `eh_citacao=False` ⇒ descartar o achado; dict ⇒ `Achado(inicio=ini_janela+inicio_rel,
+  fim=ini_janela+fim_rel, trecho=r["trecho"], familia=r["familia"], tipo=r["tipo"],
+  origem="llm:classificar_span", forca=…)`; `None` ⇒ manter a decisão determinística.
+* `contexto` deve ser a janela de ± 300–450 chars em torno do trecho (o módulo recorta a 900).
+* Lote: `arbitro.executar_lote(operacao, [args, …])` agrupa os *misses* do cache numa chamada.
+
+## Revisão da rodada 4 (20/09) — o árbitro é residual POR DESENHO (R3q-10)
+
+Medido com `--arbitro mock`: **0 chamadas** ao modelo nos 26 documentos do dev e nos 40 do
+`n3_ood`; 1 chamada (abstenção) em 60 documentos do `n2_ag_treino`. Isso não é falha de
+integração — é o resultado esperado da ordem de decisão do `resolucao.py`: o núcleo determinístico
+resolve tudo o que o índice resolve, e o árbitro só entra nos gatilhos residuais, que os dados do
+desafio quase não exercitam:
+
+| gatilho (`resolucao.py`) | quando | frequência observada |
+|---|---|---|
+| `normalizar_citacao` (`_normalizar_com_arbitro`) | achado `processo` com 0 candidatos (depois de `chaves_alternativas`) E (sem dígitos, ou ≥ `LETRAS_OCR_PARA_ARBITRO` = 2 letras confundíveis convertidas, ou ≥ 1 letra não convertida no núcleo) | 0 no dev; 1/60 no `n2_ag_treino` |
+| `escolher_candidato` (`_escolher_com_arbitro`) | ≥ 2 candidatos depois de tribunal → UF → cadeia → registro → UF confirmada, que NÃO são duplicatas textuais (`sao_duplicatas` = cabeçalhos iguais) | 0 no dev (os 77 grupos ambíguos da base são duplicatas, docs/04 h.3) |
+| `classificar_span` | reservado a achados amplos abaixo do limiar; não é chamado pelo pipeline atual | 0 |
+
+Consequências assumidas: (1) a **submissão de referência é a do núcleo** (`--arbitro nenhum`;
+`Dockerfile`), e `Dockerfile.llm` é uma variante opcional cujo custo/benefício não é mensurável
+com os conjuntos existentes; (2) a execução "de ponta a ponta com mock" exercita a carga, a
+assinatura, o cache e as estatísticas, não a decisão do modelo — o comportamento das operações é
+coberto por `tests/test_llm.py` com respostas simuladas; (3) para medir o árbitro de verdade é
+preciso um perfil do gerador que force os gatilhos (duplicatas com cabeçalhos distintos e núcleos
+com ≥ 2 letras ambíguas sem reparo) — pendência registrada abaixo, não bloqueante para a entrega.
+
+## Revisão da rodada 3 (17/09) — engenharia
+
+- **Falha na CARGA do árbitro recua para o núcleo** (R3e-01, alta): `cli.criar_arbitro` captura
+  qualquer exceção ao instanciar o backend (`ErroDependencia`, `ValueError`, `OSError` de
+  snapshot ausente em `HF_HOME`/volume não montado, `RuntimeError` de CUDA, `KeyError` de
+  config) e segue com `arbitro=None` e log ERROR — antes só `ImportError`/`ValueError` viravam
+  código 2 e o resto era traceback com ZERO JSONs escritos. A promessa "qualquer falha do
+  árbitro = abstenção" passa a valer também para a carga. A revisão dos pesos vazia continua
+  a ser um erro de configuração, mas agora também recua (logado). Teste em
+  `tests/test_revisao_rodada3.py::TestEngenharia`.
+- **`scripts/avaliar_arbitro.py` avalia os `casos_llm.jsonl` do gerador** (R3e-03): os nomes
+  `classificar_span`/`normalizar_citacao`/`escolher_candidato` são mapeados para
+  `classificar`/`normalizar`/`escolher`; operação desconhecida → código 2 com mensagem, em vez
+  de tabela vazia. `baixar_modelo.sh` aponta para `<conjunto>/casos_llm.jsonl`.
+- **Semente e estatísticas** (R3e-09): `config.fixar_semente(com_bibliotecas=False)` com
+  `--arbitro nenhum` (não importa numpy/torch); com árbitro, `arbitro.estatisticas()` vai
+  para o log e para `<saida>/arbitro_estatisticas.log` (JSON; nunca `.json`, que o conversor oficial leria como documento) ao fim do lote (auditoria do
+  envelope de 60 s/doc).
+
+## Revisão da rodada 2 (17/09) — engenharia
+
+- **Revisão dos pesos obrigatória** (R3b-02): `ArbitroBase` levanta `ErroDependencia`
+  (código 2 no CLI) com `CACA_MODELO_REVISAO` vazia, salvo `CACA_MODELO` apontando para um
+  snapshot local — então a identidade dos pesos é `local-<sha256 de config.json + shards>`,
+  registrada no log e na chave do cache. A revisão fixa é **versionada** em
+  `modelos/revisao_fixa.env` (`Qwen/Qwen2.5-7B-Instruct` @ `a09a35458c702b33eeacc393d103063234e8bc28`,
+  `main` em 2025-01-11, Apache-2.0; alternativa AWQ @ `b25037543e9394b818fdfca67ab2a00ecc7dd641`,
+  2024-10-09) e é o valor padrão do `ARG CACA_MODELO_REVISAO` do `Dockerfile.llm`, gravado como
+  `ENV`; o build falha se o argumento for esvaziado; `make docker-llm` lê o mesmo arquivo;
+  `scripts/baixar_modelo.sh` baixa essa revisão por padrão e falha se o commit resolvido for
+  outro. `tests/test_revisao_rodada2.py` confere que MANIFESTO, Dockerfile e o `.env` batem.
+- **Hash do prompt na chave do cache** (R3b-03): `PROMPT_ID = PROMPT_VERSAO + "+" + sha256
+  curto(SISTEMA + templates)`; mudar o texto invalida o cache mesmo que a versão humana não
+  seja incrementada; `tests/test_llm.py` fixa o hash.
+- **Lote = 1 por padrão** (R3b-08): a resolução consulta o árbitro um achado por vez; o
+  tamanho do lote entra na assinatura do backend (logo na chave do cache).
+- Contingência NF4 documentada como fora da imagem (sem pin verificado de `bitsandbytes`).
+
+## Pendências
+
+* Perfil do gerador que force os gatilhos do árbitro (R3q-10) e teste de integração
+  LLM→resolução com `mock`; hoje o árbitro é dormente nos dados do desafio.
+* **Pesos**: huggingface.co é inacessível deste ambiente; a revisão está fixada (acima) mas o
+  download (`bash scripts/baixar_modelo.sh` no WSL2) e o `modelos/manifesto_modelo.json` com
+  tamanhos/SHA-256 ainda precisam ser gerados na máquina com GPU.
+* Medir na 5090 e num L4/A10 emulado (fração de VRAM + 450 W): latência por operação com
+  `scripts/avaliar_arbitro.py` sobre os sintéticos difíceis do gerador; decidir por
+  `transformers` (padrão) ou `vllm`; fixar versões em `requirements-llm.txt`.
+* Comparar `PROMPT_VERSAO` futuras só pelo avaliador (acurácia por operação, taxa de
+  abstenção, `digitos_errados` = 0 obrigatório).

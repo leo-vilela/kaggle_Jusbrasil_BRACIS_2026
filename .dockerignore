@@ -1,0 +1,23 @@
+# nada dos dados do desafio nem pesos entra na imagem (só dados/calibracao.json, copiado explicitamente)
+dados/*
+!dados/calibracao.json
+modelos/
+cache_llm/
+saida/
+*.zip
+*.csv
+relatorio.json
+.git/
+.gitignore
+**/.ruff_cache/
+.venv/
+# ``**/`` é obrigatório: na semântica do Docker um padrão sem ``**/`` casa só na raiz do contexto
+# (R3q-07) — sem isso ``COPY src/`` levaria src/**/__pycache__/*.pyc do desenvolvedor para a imagem
+**/__pycache__/
+**/*.pyc
+tests/
+docs/
+scripts/
+legado/
+Dockerfile*
+Makefile

@@ -1,0 +1,479 @@
+{
+ "meta": {
+  "brier_treino_antes": 0.00489689748369073,
+  "brier_treino_depois": 0.001743224675833927,
+  "contagens": {
+   "dispositivo": {
+    "acertos": 622.0,
+    "n": 622.0
+   },
+   "dispositivo:diploma_fora_da_base": {
+    "acertos": 40.0,
+    "n": 40.0
+   },
+   "dispositivo:fora_da_tabela": {
+    "acertos": 155.0,
+    "n": 155.0
+   },
+   "dispositivo:fora_da_tabela:ocr": {
+    "acertos": 8.0,
+    "n": 8.0
+   },
+   "dispositivo:na_tabela": {
+    "acertos": 427.0,
+    "n": 427.0
+   },
+   "dispositivo:na_tabela:ocr": {
+    "acertos": 20.0,
+    "n": 20.0
+   },
+   "processo": {
+    "acertos": 2288.0,
+    "n": 2288.0
+   },
+   "processo:0cand": {
+    "acertos": 645.0,
+    "n": 645.0
+   },
+   "processo:0cand:amplo": {
+    "acertos": 5.0,
+    "n": 5.0
+   },
+   "processo:0cand:ocr_ambiguo": {
+    "acertos": 12.0,
+    "n": 12.0
+   },
+   "processo:0cand:ocr_sem_dono": {
+    "acertos": 30.0,
+    "n": 30.0
+   },
+   "processo:1cand": {
+    "acertos": 1553.0,
+    "n": 1553.0
+   },
+   "processo:1cand:cadeia_exata": {
+    "acertos": 1405.0,
+    "n": 1405.0
+   },
+   "processo:1cand:classe_compativel": {
+    "acertos": 13.0,
+    "n": 13.0
+   },
+   "processo:1cand:classe_divergente": {
+    "acertos": 17.0,
+    "n": 17.0
+   },
+   "processo:1cand:classe_principal": {
+    "acertos": 92.0,
+    "n": 92.0
+   },
+   "processo:1cand:classe_principal:amplo": {
+    "acertos": 12.0,
+    "n": 12.0
+   },
+   "processo:1cand:registro": {
+    "acertos": 8.0,
+    "n": 8.0
+   },
+   "processo:1cand:sem_classe": {
+    "acertos": 2.0,
+    "n": 2.0
+   },
+   "processo:1cand:sem_classe:amplo": {
+    "acertos": 2.0,
+    "n": 2.0
+   },
+   "processo:1cand:tribunal_incompativel": {
+    "acertos": 16.0,
+    "n": 16.0
+   },
+   "processo:ambiguo_chute": {
+    "acertos": 2.0,
+    "n": 2.0
+   },
+   "processo:duplicata": {
+    "acertos": 25.0,
+    "n": 25.0
+   },
+   "processo:multi": {
+    "acertos": 14.0,
+    "n": 14.0
+   },
+   "processo:multi:cadeia_exata": {
+    "acertos": 13.0,
+    "n": 13.0
+   },
+   "processo:multi:classe_principal": {
+    "acertos": 1.0,
+    "n": 1.0
+   },
+   "processo:ocr_reparado": {
+    "acertos": 49.0,
+    "n": 49.0
+   },
+   "processo:ocr_reparado:1cand": {
+    "acertos": 48.0,
+    "n": 48.0
+   },
+   "processo:ocr_reparado:1cand:cadeia_exata": {
+    "acertos": 48.0,
+    "n": 48.0
+   },
+   "processo:ocr_reparado:multi": {
+    "acertos": 1.0,
+    "n": 1.0
+   },
+   "processo:ocr_reparado:multi:cadeia_exata": {
+    "acertos": 1.0,
+    "n": 1.0
+   },
+   "sumula": {
+    "acertos": 471.0,
+    "n": 471.0
+   },
+   "sumula:fora_da_tabela": {
+    "acertos": 100.0,
+    "n": 100.0
+   },
+   "sumula:fora_da_tabela:ocr": {
+    "acertos": 12.0,
+    "n": 12.0
+   },
+   "sumula:fora_da_tabela:tribunal_divergente": {
+    "acertos": 14.0,
+    "n": 14.0
+   },
+   "sumula:fora_da_tabela:tribunal_divergente:ocr": {
+    "acertos": 1.0,
+    "n": 1.0
+   },
+   "sumula:na_tabela": {
+    "acertos": 371.0,
+    "n": 371.0
+   },
+   "sumula:na_tabela:ocr": {
+    "acertos": 6.0,
+    "n": 6.0
+   },
+   "sumula:na_tabela:tribunal_implicito": {
+    "acertos": 50.0,
+    "n": 50.0
+   },
+   "sumula:na_tabela:tribunal_implicito:ocr": {
+    "acertos": 3.0,
+    "n": 3.0
+   },
+   "tema": {
+    "acertos": 16.0,
+    "n": 22.0
+   },
+   "tema:inventada": {
+    "acertos": 16.0,
+    "n": 22.0
+   },
+   "tema:inventada:repercussao": {
+    "acertos": 16.0,
+    "n": 16.0
+   },
+   "tema:inventada:repetitivo": {
+    "acertos": 0.0,
+    "n": 3.0
+   },
+   "tema:inventada:solto": {
+    "acertos": 0.0,
+    "n": 3.0
+   },
+   "tema:inventada:solto:amplo": {
+    "acertos": 0.0,
+    "n": 3.0
+   },
+   "vaga": {
+    "acertos": 889.0,
+    "n": 889.0
+   },
+   "vaga:incompleta": {
+    "acertos": 889.0,
+    "n": 889.0
+   },
+   "vaga:incompleta:amplo": {
+    "acertos": 16.0,
+    "n": 16.0
+   },
+   "vaga:incompleta:sem_correspondencia": {
+    "acertos": 1.0,
+    "n": 1.0
+   },
+   "vaga:incompleta:unica": {
+    "acertos": 1.0,
+    "n": 1.0
+   }
+  },
+  "fontes": [
+   {
+    "acertos": 192,
+    "n": 192,
+    "nome": "rastro:cal_dev/rastro.jsonl"
+   },
+   {
+    "acertos": 61,
+    "n": 61,
+    "nome": "rastro:cal_cabecalhos/rastro.jsonl"
+   },
+   {
+    "acertos": 96,
+    "n": 96,
+    "nome": "rastro:cal_conectores/rastro.jsonl"
+   },
+   {
+    "acertos": 66,
+    "n": 66,
+    "nome": "rastro:cal_distratores/rastro.jsonl"
+   },
+   {
+    "acertos": 108,
+    "n": 108,
+    "nome": "rastro:cal_frases/rastro.jsonl"
+   },
+   {
+    "acertos": 144,
+    "n": 144,
+    "nome": "rastro:cal_normativos/rastro.jsonl"
+   },
+   {
+    "acertos": 60,
+    "n": 60,
+    "nome": "rastro:cal_r2_chave_parcial/rastro.jsonl"
+   },
+   {
+    "acertos": 93,
+    "n": 93,
+    "nome": "rastro:cal_r2_duplicatas/rastro.jsonl"
+   },
+   {
+    "acertos": 96,
+    "n": 96,
+    "nome": "rastro:cal_r2_fora_da_base/rastro.jsonl"
+   },
+   {
+    "acertos": 156,
+    "n": 156,
+    "nome": "rastro:cal_r2_listas/rastro.jsonl"
+   },
+   {
+    "acertos": 120,
+    "n": 120,
+    "nome": "rastro:cal_r2_normativos_ruido/rastro.jsonl"
+   },
+   {
+    "acertos": 128,
+    "n": 128,
+    "nome": "rastro:cal_r2_processos_forma/rastro.jsonl"
+   },
+   {
+    "acertos": 108,
+    "n": 108,
+    "nome": "rastro:cal_r2_vagas_ordem/rastro.jsonl"
+   },
+   {
+    "acertos": 60,
+    "n": 60,
+    "nome": "rastro:cal_r3_atos_normativos/rastro.jsonl"
+   },
+   {
+    "acertos": 96,
+    "n": 96,
+    "nome": "rastro:cal_r3_caps_corpo/rastro.jsonl"
+   },
+   {
+    "acertos": 104,
+    "n": 104,
+    "nome": "rastro:cal_r3_dispositivos_forma/rastro.jsonl"
+   },
+   {
+    "acertos": 132,
+    "n": 132,
+    "nome": "rastro:cal_r3_enumeracoes/rastro.jsonl"
+   },
+   {
+    "acertos": 108,
+    "n": 108,
+    "nome": "rastro:cal_r3_prefixo_tribunal/rastro.jsonl"
+   },
+   {
+    "acertos": 104,
+    "n": 104,
+    "nome": "rastro:cal_r3_sumulas_forma/rastro.jsonl"
+   },
+   {
+    "acertos": 96,
+    "n": 96,
+    "nome": "rastro:cal_r3_vagas_redacao/rastro.jsonl"
+   },
+   {
+    "acertos": 60,
+    "n": 60,
+    "nome": "rastro:cal_r4_cabecalhos_novos/rastro.jsonl"
+   },
+   {
+    "acertos": 67,
+    "n": 67,
+    "nome": "rastro:cal_r4_negativas_vizinhas/rastro.jsonl"
+   },
+   {
+    "acertos": 72,
+    "n": 72,
+    "nome": "rastro:cal_r4_ocr_duplo/rastro.jsonl"
+   },
+   {
+    "acertos": 84,
+    "n": 84,
+    "nome": "rastro:cal_r4_vagas_relator_antes/rastro.jsonl"
+   },
+   {
+    "acertos": 60,
+    "n": 66,
+    "nome": "rastro:cal_r5_distratores_orgaos/rastro.jsonl"
+   },
+   {
+    "acertos": 86,
+    "n": 86,
+    "nome": "rastro:cal_r5_layouts/rastro.jsonl"
+   },
+   {
+    "acertos": 108,
+    "n": 108,
+    "nome": "rastro:cal_r5_normativos_ocr/rastro.jsonl"
+   },
+   {
+    "acertos": 120,
+    "n": 120,
+    "nome": "rastro:cal_r5_processos_ocr_combo/rastro.jsonl"
+   },
+   {
+    "acertos": 115,
+    "n": 115,
+    "nome": "rastro:cal_r5_processos_plural_nos/rastro.jsonl"
+   },
+   {
+    "acertos": 96,
+    "n": 96,
+    "nome": "rastro:cal_r5_vagas_lavra_final/rastro.jsonl"
+   },
+   {
+    "acertos": 96,
+    "n": 96,
+    "nome": "rastro:cal_ruido_n2/rastro.jsonl"
+   },
+   {
+    "acertos": 107,
+    "n": 107,
+    "nome": "rastro:cal_siglas/rastro.jsonl"
+   },
+   {
+    "acertos": 95,
+    "n": 95,
+    "nome": "rastro:cal_vagas/rastro.jsonl"
+   },
+   {
+    "acertos": 424,
+    "n": 424,
+    "nome": "rastro:cal_n2_ag_treino/rastro.jsonl"
+   },
+   {
+    "acertos": 280,
+    "n": 280,
+    "nome": "rastro:cal_n2_dev/rastro.jsonl"
+   },
+   {
+    "acertos": 288,
+    "n": 288,
+    "nome": "rastro:cal_n3_ood/rastro.jsonl"
+   }
+  ],
+  "gerado_em": "2026-09-20T02:07:04+00:00",
+  "peso_prior": 4.0,
+  "piso": 0.05,
+  "seed": 0,
+  "suavizacao": "(a + k*p0)/(n + k): Laplace generalizado, p0 = prior hierárquico da tabela inicial, k = peso_prior",
+  "teto": 0.98,
+  "validacao": []
+ },
+ "tabela": {
+  "dispositivo": 0.998,
+  "dispositivo:diploma_desconhecido": 0.7,
+  "dispositivo:diploma_fora_da_base": 0.98,
+  "dispositivo:fora_da_tabela": 0.998,
+  "dispositivo:fora_da_tabela:diploma_outro": 0.85,
+  "dispositivo:fora_da_tabela:ocr": 0.9667,
+  "dispositivo:na_tabela": 0.998,
+  "dispositivo:na_tabela:ocr": 0.98,
+  "dispositivo:sem_artigo": 0.5,
+  "dispositivo:sem_diploma": 0.5,
+  "processo": 0.998,
+  "processo:0cand": 0.998,
+  "processo:0cand:amplo": 0.9778,
+  "processo:0cand:ocr_ambiguo": 0.6,
+  "processo:0cand:ocr_sem_dono": 0.98,
+  "processo:0cand:registro_diverge": 0.6,
+  "processo:1cand": 0.998,
+  "processo:1cand:cadeia_exata": 0.998,
+  "processo:1cand:classe_compativel": 0.9765,
+  "processo:1cand:classe_divergente": 0.75,
+  "processo:1cand:classe_divergente:sem_uf": 0.5,
+  "processo:1cand:classe_principal": 0.98,
+  "processo:1cand:classe_principal:amplo": 0.98,
+  "processo:1cand:curto_classe_divergente": 0.6,
+  "processo:1cand:registro": 0.9667,
+  "processo:1cand:sem_classe": 0.9,
+  "processo:1cand:sem_classe:amplo": 0.9,
+  "processo:1cand:tribunal_incompativel": 0.7,
+  "processo:1cand:uf_incompativel": 0.7,
+  "processo:ambiguo_chute": 0.4,
+  "processo:duplicata": 0.8,
+  "processo:duplicata:classe_divergente": 0.5,
+  "processo:llm_escolha": 0.65,
+  "processo:llm_nao_citacao": 0.5,
+  "processo:llm_normalizou": 0.7,
+  "processo:llm_normalizou:0cand": 0.75,
+  "processo:multi": 0.9556,
+  "processo:multi:cadeia_exata": 0.98,
+  "processo:multi:classe_compativel": 0.8,
+  "processo:multi:classe_principal": 0.88,
+  "processo:multi:curto_classe_divergente": 0.6,
+  "processo:multi:registro": 0.9,
+  "processo:multi:tribunal": 0.9,
+  "processo:multi:tribunal_incompativel": 0.7,
+  "processo:multi:uf": 0.85,
+  "processo:multi:uf_confirmada": 0.85,
+  "processo:multi:uf_incompativel": 0.7,
+  "processo:ocr_reparado": 0.98,
+  "processo:ocr_reparado:1cand": 0.98,
+  "processo:ocr_reparado:1cand:cadeia_exata": 0.98,
+  "processo:ocr_reparado:multi": 0.84,
+  "processo:ocr_reparado:multi:cadeia_exata": 0.96,
+  "sumula": 0.998,
+  "sumula:fora_da_tabela": 0.998,
+  "sumula:fora_da_tabela:ocr": 0.975,
+  "sumula:fora_da_tabela:sem_tribunal": 0.85,
+  "sumula:fora_da_tabela:tribunal_divergente": 0.98,
+  "sumula:fora_da_tabela:tribunal_divergente:ocr": 0.96,
+  "sumula:fora_da_tabela:vinculante_tribunal_divergente": 0.7,
+  "sumula:na_tabela": 0.998,
+  "sumula:na_tabela:ocr": 0.96,
+  "sumula:na_tabela:sem_tribunal": 0.95,
+  "sumula:na_tabela:tribunal_implicito": 0.98,
+  "sumula:na_tabela:tribunal_implicito:ocr": 0.98,
+  "sumula:sem_numero": 0.5,
+  "tema": 0.7538,
+  "tema:inventada": 0.7538,
+  "tema:inventada:repercussao": 0.98,
+  "tema:inventada:repetitivo": 0.4857,
+  "tema:inventada:solto": 0.3429,
+  "tema:inventada:solto:amplo": 0.3429,
+  "vaga": 0.998,
+  "vaga:incompleta": 0.998,
+  "vaga:incompleta:amplo": 0.98,
+  "vaga:incompleta:sem_correspondencia": 0.8,
+  "vaga:incompleta:unica": 0.92
+ }
+}

@@ -1,0 +1,10 @@
+# Árbitro LLM (opcional; Dockerfile.llm). Versões pinadas (==) para a revisão fixa exigida pelo
+# desafio; torch 2.7.1+cu128 já vem na imagem base pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
+# (Blackwell/sm_120 e anteriores). O commit dos pesos está em MANIFESTO_MODELO.md; o build gera
+# /app/requirements-llm.lock (pip freeze) como lock completo.
+transformers==4.51.3
+accelerate==1.7.0
+safetensors==0.5.3
+sentencepiece==0.2.0
+huggingface_hub==0.31.4
+# vllm==0.9.1   # opcional (--arbitro vllm); exige build com a mesma CUDA

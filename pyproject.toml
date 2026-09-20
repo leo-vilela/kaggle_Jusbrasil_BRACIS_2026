@@ -1,0 +1,25 @@
+[project]
+name = "caca-alucinacao"
+version = "0.1.0"
+description = "Verificador de citações jurídicas — Desafio Jusbrasil × BRACIS 2026"
+requires-python = ">=3.10"
+dependencies = []   # núcleo: só biblioteca padrão
+
+[project.optional-dependencies]
+metrica = ["numpy", "pandas"]                    # exigidos pelo kaggle_metric.py oficial
+# mesmas versões de requirements-llm.txt (torch vem da imagem base pytorch 2.7.1+cu128)
+llm = ["torch>=2.7.1", "transformers==4.51.3", "accelerate==1.7.0", "safetensors==0.5.3", "sentencepiece==0.2.0", "huggingface_hub==0.31.4"]
+
+[tool.ruff]
+# Regras efetivas (make lint): padrão do ruff (E4/E7/E9/F) + RUF100 (noqa sem uso). E501 NÃO é
+# imposto de propósito: literais de regex e tabelas dos testes passam de 120 colunas e quebrá-los
+# reduziria a legibilidade; `line-length` é a meta para código novo, não uma verificação
+# (revisão rodada 2, R3b-09).
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+extend-select = ["RUF100"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

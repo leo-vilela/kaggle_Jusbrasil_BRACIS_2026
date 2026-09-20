@@ -1,0 +1,17 @@
+# dados do desafio — não podem ser redistribuídos (só nossos artefatos pequenos são versionados)
+dados/*
+!dados/.gitkeep
+!dados/calibracao.json
+saida/
+*.zip
+__pycache__/
+*.pyc
+.ruff_cache/
+.venv/
+modelos/*
+!modelos/revisao_fixa.env
+cache_llm/
+
+# artefatos locais
+relatorio.json
+submission.csv
