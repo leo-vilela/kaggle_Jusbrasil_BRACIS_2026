@@ -43,7 +43,8 @@ o que reproduz o envelope da organização.
 ## Decodificação (determinística)
 
 * `transformers`: `do_sample=False`, `num_beams=1`, `temperature=None`, `top_p=None`,
-  `top_k=None`, `repetition_penalty=1.0`, `max_new_tokens` = 96 / 64 / 160 por operação,
+  `top_k=None`, `repetition_penalty=1.0`, `max_new_tokens` = 96 / 64 / 160 / 480 por operação
+  (`normalizar` / `escolher` / `classificar` / `extrair` — o extrator de segundo estágio, ADR 0003),
   `torch.manual_seed(1234)` antes de cada `generate`, TF32 desligado, chat template
   oficial do modelo (`apply_chat_template(add_generation_prompt=True)`), **um prompt por
   `generate` (lote = 1, sem padding)** — a resolução consulta o árbitro um achado por vez e a

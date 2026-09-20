@@ -17,6 +17,10 @@
 #           -v <db>:/data/base/desafio1_bracis.db:ro \
 #           -v $PWD/modelos:/modelos:ro \
 #           caca-alucinacao:llm --input /data/in --output /data/out --arbitro transformers
+# Reprodução SEM GPU da mesma saída (ADR 0003): monte o JSONL exportado do cache e passe
+#           -e CACA_LLM_SOMENTE_CACHE=1 -e CACA_LLM_CACHE_IMPORTAR=/data/cache/cache_llm.jsonl -v <pasta>:/data/cache:ro
+# O árbitro segue o padrão ouro: extrai/desambigua com validação no texto e na base; nunca classifica.
+# Se os pesos não estiverem montados, o CLI registra ERROR e segue só com o núcleo (nunca zero JSONs).
 #
 # Base: torch 2.7.1 + CUDA 12.8 (kernels sm_120 — a RTX 5090/Blackwell exige CUDA >= 12.8 e
 # torch >= 2.7; a base 2.4.1+cu124 anterior falhava com "no kernel image is available").
@@ -43,6 +47,7 @@ ENV PYTHONHASHSEED=0 \
     CACA_MODELO=Qwen/Qwen2.5-7B-Instruct \
     CACA_CACHE_LLM=/data/out/.cache_llm/arbitro_llm.sqlite \
     CACA_ARBITRO=transformers \
+    CACA_LLM_EXTRATOR_JANELAS=6 \
     HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1 \
     TOKENIZERS_PARALLELISM=false \

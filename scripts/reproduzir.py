@@ -93,6 +93,24 @@ def comparar_pastas(a: Path, b: Path) -> list[str]:
     return diferentes
 
 
+def pasta_limpa(pasta: Path) -> Path:
+    """``pasta`` vazia e recém-criada; se não puder apagar a existente (montagens sem permissão de
+    exclusão, como a VM do Cowork), usa ``<pasta>_2``, ``<pasta>_3``… — nunca reaproveita saída antiga."""
+    candidata = pasta
+    for n in range(2, 50):
+        if candidata.exists():
+            try:
+                shutil.rmtree(candidata)
+            except OSError:
+                candidata = pasta.with_name(f"{pasta.name}_{n}")
+                continue
+        candidata.mkdir(parents=True)
+        if candidata != pasta:
+            print(f"aviso: não foi possível apagar {pasta}; usando {candidata}")
+        return candidata
+    raise RuntimeError(f"não foi possível criar uma pasta de saída limpa a partir de {pasta}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--saida", type=Path, default=RAIZ / "saida_reproducao",
@@ -171,9 +189,7 @@ def main() -> int:
             et.falha("4 vazamento", (r.stdout + r.stderr)[-1500:])
 
     # 5. pipeline 2× --------------------------------------------------------------------------
-    if args.saida.exists():
-        shutil.rmtree(args.saida)
-    args.saida.mkdir(parents=True)
+    args.saida = pasta_limpa(args.saida)
     base = [py, "-m", "caca_alucinacao.cli", "--input", str(args.entrada), "--db", str(DADOS / "desafio1_bracis.db"),
             "--arbitro", "nenhum", "--calibracao", str(args.calibracao)]
     a, b = args.saida / "execucao_a", args.saida / "execucao_b"

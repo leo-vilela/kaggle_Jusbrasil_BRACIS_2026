@@ -76,6 +76,15 @@ def sem_treino(caminho: str) -> bool:
     """``True`` se o caminho (ou um prefixo dele) está em :data:`CAMINHOS_SEM_TREINO`."""
     return any(caminho == c or caminho.startswith(c + ":") for c in CAMINHOS_SEM_TREINO)
 
+
+#: Prefixos que nunca recebem o teto consolidado (0,998), por mais decisões sem erro que acumulem:
+#: a evidência de um caminho tocado pelo LLM depende do backend e do prompt, não só dos dados.
+CAMINHOS_SEM_CONSOLIDACAO: tuple[str, ...] = ("llm",)
+
+
+def sem_consolidacao(caminho: str) -> bool:
+    return any(caminho == c or caminho.startswith(c + ":") for c in CAMINHOS_SEM_CONSOLIDACAO)
+
 #: Confianças iniciais por caminho (docs/03 §9.4; docs/04 h.11). São *priors*:
 #: o treino substitui/encolhe cada uma pela acurácia empírica. Os valores altos
 #: (0,98) são os caminhos com 100 % no dev; ≈ 0,5 é reservado a empates entre
@@ -119,6 +128,19 @@ TABELA_INICIAL: dict[str, float] = {
     "processo:duplicata": 0.80,
     "processo:duplicata:classe_divergente": 0.50,    # grupo duplicado de OUTRA classe → inventada (R3-11; R4-03)
     "processo:llm_escolha": 0.65,
+    # Extrator LLM de segundo estágio (ADR 0003, padrão ouro): a classe veio da base, mas o span foi
+    # proposto pelo modelo — a incerteza extra é a precisão do extrator, que só a medição com o modelo
+    # REAL pode estimar (decisões de origem ``mock`` nunca treinam estes caminhos; treinar_calibracao).
+    "llm": 0.70,
+    "llm:extrator": 0.70,
+    "llm:extrator:processo": 0.75,
+    "llm:extrator:processo:1cand": 0.85,
+    "llm:extrator:processo:0cand": 0.70,
+    "llm:extrator:processo:multi": 0.65,
+    "llm:extrator:sumula": 0.80,
+    "llm:extrator:dispositivo": 0.80,
+    "llm:extrator:vaga": 0.75,
+    "llm:extrator:tema": 0.70,
     "processo:ambiguo_chute": 0.40,
     "processo:llm_normalizou": 0.70,
     "processo:llm_normalizou:0cand": 0.75,
@@ -330,7 +352,7 @@ def ajustar(
         # Teto consolidado: ≥ N_MINIMO_CONSOLIDADO decisões avaliadas sem nenhum erro (o
         # prefixo agrega os filhos, então um prefixo só consolida se TODOS os filhos acertaram).
         teto_caminho = teto
-        if n >= N_MINIMO_CONSOLIDADO and a >= n and teto < CONFIANCA_TETO_CONSOLIDADO:
+        if n >= N_MINIMO_CONSOLIDADO and a >= n and teto < CONFIANCA_TETO_CONSOLIDADO and not sem_consolidacao(caminho):
             teto_caminho = CONFIANCA_TETO_CONSOLIDADO
         saida[caminho] = limitar(p, teto_caminho, piso)
         log.debug("calibração %s: n=%.0f a=%.0f p0=%.3f → %.3f (teto %.3f)",
@@ -382,7 +404,8 @@ def salvar(tabela: Mapping[str, float], caminho: Path | str, meta: Mapping[str, 
 
 
 __all__ = [
-    "TABELA_INICIAL", "CONFIANCA_PISO", "PESO_PRIOR", "SUFIXO_AMPLO", "CAMINHOS_SEM_TREINO", "sem_treino", "Avaliacao",
+    "TABELA_INICIAL", "CONFIANCA_PISO", "PESO_PRIOR", "SUFIXO_AMPLO", "CAMINHOS_SEM_TREINO", "sem_treino",
+    "CAMINHOS_SEM_CONSOLIDACAO", "sem_consolidacao", "Avaliacao",
     "prefixos", "chaves_de_consulta", "MODIFICADORES", "valor_do_caminho", "limitar", "confianca", "normalizar_avaliacoes", "contagens",
     "laplace", "ajustar", "brier", "carregar", "salvar",
 ]

@@ -366,7 +366,7 @@ class TestCache(unittest.TestCase):
         """Mudar o texto de qualquer prompt muda ``PROMPT_HASH`` e, por consequência, a chave do
         cache; este teste obriga a atualizar o hash esperado (e, por convenção, PROMPT_VERSAO)
         junto com o texto (R3b-03)."""
-        self.assertEqual(prompts.PROMPT_HASH, "8eec55d1e1135253")
+        self.assertEqual(prompts.PROMPT_HASH, "5d503edc6854c3b4")
         self.assertEqual(prompts.PROMPT_ID, f"{PROMPT_VERSAO}+{prompts.PROMPT_HASH}")
         self.assertEqual(len(prompts.PROMPT_HASH), 16)
 

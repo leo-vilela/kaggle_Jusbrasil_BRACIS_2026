@@ -1,14 +1,16 @@
 # Caça-Alucinações — verificador de citações jurídicas (Jusbrasil × BRACIS 2026)
 
-> Estado (20/09/2026, após a revisão da rodada 4): **todos os módulos prontos e testados**
-> (563 testes, `make testar`). Núcleo determinístico só com biblioteca padrão; score no
-> conjunto de desenvolvimento **1,10000** (1,0999975; τ = 0), nos sintéticos n2/n3 1,10000 /
-> 1,09987 e nos 32 conjuntos adversariais das quatro rodadas de revisão entre 1,027 e 1,10000
-> (30 deles ≥ 1,085), todos com τ = 0 (ver `docs/decisoes/0005-deteccao.md`, `0006-resolucao.md`
-> e `0007-calibracao.md`, seções "Revisão da rodada 4"; geradores em `scripts/adversarial/`,
-> `make adversarial`). O árbitro LLM (`llm/`) é opcional, desligado por padrão
-> (`--arbitro nenhum`) e **residual por desenho** — 0 chamadas no dev (ADR 0003, rodada 4); a
-> submissão de referência é a do núcleo. Histórico de fases em `docs/02_arquitetura.md`.
+> Estado (20/09/2026, v1.2): **todos os módulos prontos e testados** (585 testes, `make testar`;
+> reprodução em um comando, `make reproduzir`). Núcleo determinístico só com biblioteca padrão;
+> score no conjunto de desenvolvimento **1,10000** (1,0999960; τ = 0), nos sintéticos n2/n3
+> 1,10000 / 1,09986 e nos 34 conjuntos adversariais das revisões entre 1,027 e 1,10000 (todos com
+> τ = 0; ver `docs/decisoes/0005`–`0007`; geradores em `scripts/adversarial/`, `make adversarial`).
+> Calibração retreinada de forma reproduzível com validação fora da amostra (`make
+> calibrar-completo`, ADR 0007). O árbitro LLM (`llm/`, Qwen2.5-7B-Instruct, pesos originais,
+> revisão fixa) segue o **padrão ouro** (ADR 0003): extrai e desambigua com toda saída validada
+> contra o texto e a base, nunca classifica; `Dockerfile.llm` roda com ele **ligado**, e
+> `make comparar-arbitro` mede núcleo × árbitro com veredito automático. A submissão de
+> referência continua sendo a do núcleo até a medição com o modelo real (`scripts/rodar_llm_local.py`).
 
 ## O desafio em 5 linhas
 
@@ -29,9 +31,13 @@ Detalhes: `docs/00_analise_proposta_vs_desafio.md` (formato e métrica linha a l
 ## Arquitetura
 
 ```
-.txt ─▶ deteccao ─▶ normalizacao ─▶ base_canonica ─▶ resolucao ─▶ calibracao ─▶ contrato (JSON 1.2)
-                                                          └─▶ llm.arbitro (só casos residuais, opcional)
+.txt ─▶ deteccao (regex) ─▶ llm.extrator (janelas com pistas sem achado; propostas validadas no texto) ─┐
+                                                                                                        ▼
+        contrato (JSON 1.2) ◀─ calibracao ◀─ resolucao ◀─ base_canonica ◀─ normalizacao ◀─ achados (regex ∪ llm)
+                                                  └─▶ llm.arbitro: normalizar / escolher entre registros da base (residual)
 ```
+A classe (`real`/`inventada`/`incompleta`) é sempre função da consulta à base; o LLM só aponta onde
+olhar e escolhe entre candidatos que a base já devolveu (ADR 0003, "padrão ouro").
 
 | módulo (`src/caca_alucinacao/`) | papel | estado |
 |---|---|---|
@@ -42,9 +48,9 @@ Detalhes: `docs/00_analise_proposta_vs_desafio.md` (formato e métrica linha a l
 | `cli.py`, `config.py` | linha de comando do container; caminhos por `CACA_*` | pronto |
 | `deteccao/`, `normalizacao.py` | regex por família + normalização de OCR (núcleos ambíguos nunca viram chave parcial) | pronto (192/192 spans no dev) |
 | `resolucao.py`, `calibracao.py` | classe por cardinalidade da consulta; reparo determinístico de OCR; confiança por caminho de decisão | pronto (1,10000 no dev; τ = 0) |
-| `llm/` | árbitro Qwen (pesos abertos, revisão fixa, decodificação determinística) | pronto, opcional (`--arbitro transformers`; `Dockerfile.llm`) |
+| `llm/` | árbitro Qwen (pesos originais, revisão fixa, decodificação determinística): `extrator.py` (2º estágio), `normalizar`, `escolher`; validação determinística em `arbitro.py`; cache exportável (reprodução sem GPU) | pronto (`--arbitro transformers`; `Dockerfile.llm` ligado; `make comparar-arbitro`) |
 | `scripts/analise/verificar_vazamento.py` | lint: nenhum trecho/número/nome do gabarito ou da base em arquivo versionado (`make vazamento`; também roda em `make testar`) | pronto |
-| `scripts/adversarial/` | geradores dos 32 conjuntos adversariais das revisões (gabarito por construção a partir de `dados/indice.json`; sem nenhum número da base no código — consultas posicionais) + `rodar_*.sh` + `erros.py` (diagnóstico) | pronto |
+| `scripts/adversarial/` | geradores dos 34 conjuntos adversariais das revisões (`r6_*` forçam o extrator LLM) (gabarito por construção a partir de `dados/indice.json`; sem nenhum número da base no código — consultas posicionais) + `rodar_*.sh` + `erros.py` (diagnóstico) | pronto |
 
 Decisões registradas em `docs/decisoes/`; especificações medidas nos dados em `docs/03_*` e `docs/04_*`.
 
@@ -56,7 +62,7 @@ avaliação local com o script oficial (`pip install -r requirements.txt`). `mak
 **Em um comando** (com `dados/` já preenchido pelo passo 1 abaixo):
 
 ```bash
-make reproduzir REFERENCIA=../submission_v1_1.csv   # ou: python scripts/reproduzir.py --referencia ../submission_v1_1.csv
+make reproduzir REFERENCIA=../submission_v1_2.csv   # ou: python scripts/reproduzir.py --referencia ../submission_v1_2.csv
 ```
 
 `scripts/reproduzir.py` confere os SHA-256 dos dados oficiais, gera os derivados que faltarem
@@ -86,8 +92,11 @@ make indice
 make sinteticos
 make testar            # ou: PYTHONPATH=src python -m unittest discover -s tests -v
 make lint              # ruff (se instalado) + scripts/analise/verificar_vazamento.py
-make adversarial       # regenera os 32 conjuntos adversariais (scripts/adversarial/, seeds fixas) em
+make adversarial       # regenera os 34 conjuntos adversariais (scripts/adversarial/, seeds fixas) em
                        # dados/adversarial/ e roda pipeline + métrica oficial em cada um (~1 min)
+make calibrar-completo # reproduz o TREINO da calibração (ADR 0007): regenera os conjuntos, roda o núcleo em
+                       # 38, treina em 37 e valida em n3_ood (fora do ajuste); falha se a tabela obtida
+                       # diferir de dados/calibracao.json (~1 min; GRAVAR=1 grava uma tabela nova)
 
 # 4. rodar sobre os 26 documentos de desenvolvimento → saida/*.json (+ saida/rastro.jsonl)
 make rodar             # = PYTHONPATH=src python -m caca_alucinacao.cli --input dados/txt --output saida --db dados/desafio1_bracis.db
@@ -173,21 +182,39 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_
 ### 2. Núcleo determinístico (o que gera a submissão de referência)
 ```bash
 make dados ZIP=../arquivos/desafio-jusbrasil-bracis-2026.zip   # ou pule se dados/ já estiver completo
-make indice && make sinteticos && make testar                  # 563 testes
+make indice && make sinteticos && make testar                  # 585 testes
 make rodar && make avaliar                                     # 1,10000 esperado no dev
 make submissao                                                 # submission.csv + submission_jsons.zip
 ```
 
-### 3. Árbitro LLM (Qwen2.5-7B-Instruct, revisão fixa) — opcional, residual por desenho
+### 3. Árbitro LLM (Qwen2.5-7B-Instruct, revisão fixa) — ligado no padrão ouro, medido antes de valer
 ```bash
-bash scripts/baixar_modelo.sh            # ~15 GB; usa a revisão de modelos/revisao_fixa.env e confere o commit
-make rodar ARBITRO=transformers SAIDA=saida_llm
-make avaliar SAIDA=saida_llm             # deve reproduzir a saída do núcleo (0 chamadas no dev)
-python scripts/avaliar_arbitro.py --arbitro transformers --casos dados/sinteticos/n3_ood/casos_llm.jsonl
+# tudo em um comando (baixa os pesos se faltarem, fumaça, medição núcleo × árbitro, dev, cache):
+python scripts/rodar_llm_local.py                 # --rapido (padrão) ≈ 500 chamadas; --completo = todos os conjuntos
+python scripts/rodar_llm_local.py --modelo /caminho/de/um/snapshot/local   # teste de fumaça com pesos já no disco
+# passo a passo equivalente:
+bash scripts/baixar_modelo.sh                     # ~15 GB; revisão de modelos/revisao_fixa.env, commit conferido
+make comparar-arbitro ARBITRO=transformers CACHE_LLM=saida_llm/cache_llm.sqlite   # Δscore, τ, precisão, VEREDITO
+make rodar ARBITRO=transformers SAIDA=saida_llm && make avaliar SAIDA=saida_llm
 ```
-O código limita a fração de VRAM para nunca passar de 24 GB numa GPU de 32 GB
-(`torch.cuda.set_per_process_memory_fraction`), decodificação greedy com semente fixa e cache em
-disco das respostas (`cache_llm/`).
+Pelo Windows, em um clique: `scripts\rodar_llm_wsl.cmd` (duplo clique no Explorador ou no
+PowerShell; distro `debian-distro` e venv `/opt/bracis/venv` no topo do arquivo — edite se forem
+outros). Ele instala o que faltar no venv, roda `scripts/rodar_llm_local.py` no WSL e deixa tudo em
+`saida_llm\` (`log.txt` para acompanhar; `ambiente.json` com torch/transformers/GPU, `modelo.json`
+com o hash dos pesos). Equivalente manual: `wsl.exe -d debian-distro --exec /opt/bracis/venv/bin/python
+scripts/rodar_llm_local.py` a partir da pasta do repositório. O código limita a fração de VRAM para nunca passar de 24 GB numa GPU de 32 GB
+(`torch.cuda.set_per_process_memory_fraction`), decodificação greedy com semente fixa, 1 prompt
+por `generate`, cache em disco das respostas.
+
+**O que decide se o árbitro entra na submissão** é o veredito de `scripts/comparar_arbitro.py`
+(ADR 0003): nenhum conjunto pode cair mais que 0,0005, nenhum `inventada→real` pode aparecer, os
+conjuntos que forçam os gatilhos (`r6_extrator_formas`, `r6_extrator_distratores`) têm de melhorar
+sem falsos positivos, e o dev tem de ficar idêntico ou melhor. Com o `mock` (heurística, não o
+modelo): 37/38 conjuntos byte a byte iguais ao núcleo e `r6_extrator_formas` +0,500 com τ = 0.
+
+**Reprodução sem GPU** do que o modelo respondeu: `saida_llm/cache_llm.jsonl` (exportado ao fim)
++ `CACA_LLM_SOMENTE_CACHE=1 CACA_LLM_CACHE_IMPORTAR=saida_llm/cache_llm.jsonl make rodar
+ARBITRO=transformers` — o modelo não é carregado, torch não é exigido, e a saída é a mesma.
 
 ### 4. Docker (o comando exato da organização) e verificação de reprodutibilidade
 ```bash

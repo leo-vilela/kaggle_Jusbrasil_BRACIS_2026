@@ -5,7 +5,7 @@ usuário com instruções específicas, exemplos SINTÉTICOS (nenhum trecho, nú
 ou nome vem do gabarito ou da base) e o pedido de JSON puro.
 
 ``PROMPT_VERSAO`` é o rótulo humano da versão; ``PROMPT_HASH`` (sha256 curto de
-``SISTEMA`` + os três templates de usuário, calculado no import) entra no hash do
+``SISTEMA`` + os quatro templates de usuário, calculado no import) entra no hash do
 cache junto com ele, então **qualquer** mudança de texto invalida o cache
 automaticamente — a versão humana deixou de ser o único guarda (revisão rodada 2,
 R3b-03). ``tests/test_llm.py`` fixa o hash esperado: mudar o prompt obriga a
@@ -21,13 +21,13 @@ import hashlib
 import json
 from typing import Any
 
-PROMPT_VERSAO = "2026-09-17.1"
+PROMPT_VERSAO = "2026-09-20.1"
 
 # Comprimento máximo (codepoints) do contexto enviado ao modelo. A janela é
 # recortada em torno do trecho para caber no orçamento de tokens (≈ 1k).
 CONTEXTO_MAX = 900
 
-OPERACOES = ("normalizar", "escolher", "classificar")
+OPERACOES = ("normalizar", "escolher", "classificar", "extrair")
 
 SISTEMA = """Você é um assistente jurídico brasileiro especializado em identificar e normalizar citações de jurisprudência e de lei em pareceres e petições. Você recebe trechos curtos (às vezes com ruído de OCR, abreviações, quebras de linha) e responde SOMENTE com um objeto JSON válido, sem comentários, sem cercas de código e sem texto antes ou depois.
 
@@ -160,6 +160,42 @@ def mensagens_classificar(trecho: str, contexto: str) -> list[dict[str, str]]:
 
 
 # ---------------------------------------------------------------------------
+# extrair_citacoes (extrator de segundo estágio — padrão ouro: o modelo só aponta
+# onde olhar; número, classe, UF, artigo, diploma, ano e relator têm de estar
+# literalmente no span, e a classe (real/inventada/incompleta) vem da base)
+# ---------------------------------------------------------------------------
+_EXTRAIR_INSTRUCOES = """Tarefa: um detector automático já marcou as citações mais comuns da janela abaixo (lista "já detectadas", com offsets relativos à janela). Encontre citações de jurisprudência ou de lei que ele NÃO marcou — formas incomuns, abreviações, palavras quebradas por hífen ou espaço, OCR na palavra (Sún1ula, RE5p, Re curso), número escrito depois de "de número", classe e número colados, citações vagas com órgão julgador. Toda citação de processo precisa de uma classe processual reconhecível (REsp, Rcl, RE, HC, RR…); "acórdão nº" ou "processo nº" sem classe não entram. Não repita nem estenda as já detectadas. Não marque: número dos autos do cabeçalho, protocolo, OAB, fls., R$, datas, percentuais, "jurisprudência pacífica", "esta Corte", leis citadas sem artigo.
+Devolva um JSON: {"citacoes": [ {"trecho": "texto EXATO copiado da janela (caractere a caractere, inclusive quebras)", "familia": "processo|sumula|dispositivo|tema|vaga", "classe_cadeia": [siglas canônicas, só para processo], "numero_digitos": "dígitos do número na ordem, letras de OCR convertidas (processo)", "uf": "duas letras ou null", "tribunal": "STF|STJ|TSE|TST|STM ou null", "numero_sumula": "dígitos ou null", "vinculante": true|false, "artigo": "número do artigo ou null", "diploma": "nome do diploma como está no trecho ou null", "ano": "AAAA ou null", "relator": "nome do relator como está no trecho ou null"} ] }
+Sem nada novo: {"citacoes": []}. Fronteiras: começa na classe/Súmula/art./Tema/julgado/acórdão e termina no último dígito, na UF, no tribunal, no diploma ou no nome do relator; artigo anterior (o, a, no, na, do, da) e pontuação final ficam fora. Cada número, UF, artigo, diploma, ano e nome que você devolver TEM de aparecer literalmente no trecho; nunca complete de memória.
+
+Exemplos:
+Janela: "como se vê no REsp1.234.567/SP, que afastou a tese, e na Súmula 7 do STJ."
+Já detectadas: [{"inicio": 55, "fim": 71, "trecho": "Súmula 7 do STJ"}]
+Resposta: {"citacoes": [{"trecho": "REsp1.234.567/SP", "familia": "processo", "classe_cadeia": ["RESP"], "numero_digitos": "1234567", "uf": "SP", "tribunal": "STJ", "numero_sumula": null, "vinculante": false, "artigo": null, "diploma": null, "ano": null, "relator": null}]}
+Janela: "conforme decidido no julgamento do recurso especial de número 2.OO0.111, oriundo do Paraná, e na Recla-\nmação 45.678/SP"
+Já detectadas: []
+Resposta: {"citacoes": [{"trecho": "recurso especial de número 2.OO0.111", "familia": "processo", "classe_cadeia": ["RESP"], "numero_digitos": "2000111", "uf": null, "tribunal": "STJ", "numero_sumula": null, "vinculante": false, "artigo": null, "diploma": null, "ano": null, "relator": null}, {"trecho": "Recla-\nmação 45.678/SP", "familia": "processo", "classe_cadeia": ["RCL"], "numero_digitos": "45678", "uf": "SP", "tribunal": null, "numero_sumula": null, "vinculante": false, "artigo": null, "diploma": null, "ano": null, "relator": null}]}
+Janela: "Aplica-se a Sún1ula 4l2 do TST e o art. 8O2 do Código Civil, conforme julgado pela 3ª Turma do STJ em 2020, relatoria da Ministra Beltrana Souza."
+Já detectadas: []
+Resposta: {"citacoes": [{"trecho": "Sún1ula 4l2 do TST", "familia": "sumula", "classe_cadeia": [], "numero_digitos": null, "uf": null, "tribunal": "TST", "numero_sumula": "412", "vinculante": false, "artigo": null, "diploma": null, "ano": null, "relator": null}, {"trecho": "art. 8O2 do Código Civil", "familia": "dispositivo", "classe_cadeia": [], "numero_digitos": null, "uf": null, "tribunal": null, "numero_sumula": null, "vinculante": false, "artigo": "802", "diploma": "Código Civil", "ano": null, "relator": null}, {"trecho": "julgado pela 3ª Turma do STJ em 2020, relatoria da Ministra Beltrana Souza", "familia": "vaga", "classe_cadeia": [], "numero_digitos": null, "uf": null, "tribunal": "STJ", "numero_sumula": null, "vinculante": false, "artigo": null, "diploma": null, "ano": "2020", "relator": "Beltrana Souza"}]}
+Janela: "conforme consta às fls. 45/52 dos autos, a jurisprudência pacífica desta Corte não socorre o recorrente (Processo nº 0001234-56.2020.8.26.0100)."
+Já detectadas: []
+Resposta: {"citacoes": []}
+"""
+
+
+def mensagens_extrair(contexto: str, ja_detectadas: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Mensagens (chat) para ``extrair_citacoes``."""
+    usuario = (
+        f"{_EXTRAIR_INSTRUCOES}\n"
+        f"Janela: {json.dumps(contexto, ensure_ascii=False)}\n"
+        f"Já detectadas: {json.dumps(ja_detectadas, ensure_ascii=False)}\n"
+        "Resposta (apenas o JSON):"
+    )
+    return [{"role": "system", "content": SISTEMA}, {"role": "user", "content": usuario}]
+
+
+# ---------------------------------------------------------------------------
 # Esquemas JSON (guided decoding no vLLM; documentação da saída)
 # ---------------------------------------------------------------------------
 ESQUEMAS: dict[str, dict[str, Any]] = {
@@ -193,17 +229,45 @@ ESQUEMAS: dict[str, dict[str, Any]] = {
         },
         "required": ["eh_citacao", "familia", "tipo", "trecho"],
     },
+    "extrair": {
+        "type": "object",
+        "properties": {
+            "citacoes": {
+                "type": "array",
+                "maxItems": 12,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "trecho": {"type": "string"},
+                        "familia": {"type": "string", "enum": ["processo", "sumula", "dispositivo", "tema", "vaga"]},
+                        "classe_cadeia": {"type": "array", "items": {"type": "string"}},
+                        "numero_digitos": {"type": ["string", "null"]},
+                        "uf": {"type": ["string", "null"]},
+                        "tribunal": {"type": ["string", "null"]},
+                        "numero_sumula": {"type": ["string", "null"]},
+                        "vinculante": {"type": "boolean"},
+                        "artigo": {"type": ["string", "null"]},
+                        "diploma": {"type": ["string", "null"]},
+                        "ano": {"type": ["string", "null"]},
+                        "relator": {"type": ["string", "null"]},
+                    },
+                    "required": ["trecho", "familia"],
+                },
+            },
+        },
+        "required": ["citacoes"],
+    },
 }
 
 # Orçamento de geração por operação (tokens novos). Pequeno de propósito: a
 # resposta é um JSON curto e o custo de decodificação domina a latência.
-MAX_TOKENS_NOVOS: dict[str, int] = {"normalizar": 96, "escolher": 64, "classificar": 160}
+MAX_TOKENS_NOVOS: dict[str, int] = {"normalizar": 96, "escolher": 64, "classificar": 160, "extrair": 480}
 
 
 def _hash_dos_prompts() -> str:
     """sha256 curto de todo o texto que o modelo vê (sistema + instruções das 3 operações)."""
     h = hashlib.sha256()
-    for parte in (SISTEMA, _NORMALIZAR_INSTRUCOES, _ESCOLHER_INSTRUCOES, _CLASSIFICAR_INSTRUCOES):
+    for parte in (SISTEMA, _NORMALIZAR_INSTRUCOES, _ESCOLHER_INSTRUCOES, _CLASSIFICAR_INSTRUCOES, _EXTRAIR_INSTRUCOES):
         h.update(parte.encode("utf-8"))
         h.update(b"\0")
     return h.hexdigest()[:16]
@@ -234,5 +298,5 @@ def recortar_contexto(contexto: str, trecho: str, maximo: int = CONTEXTO_MAX) ->
 
 __all__ = [
     "PROMPT_VERSAO", "PROMPT_HASH", "PROMPT_ID", "CONTEXTO_MAX", "OPERACOES", "SISTEMA", "ESQUEMAS", "MAX_TOKENS_NOVOS",
-    "mensagens_normalizar", "mensagens_escolher", "mensagens_classificar", "recortar_contexto",
+    "mensagens_normalizar", "mensagens_escolher", "mensagens_classificar", "mensagens_extrair", "recortar_contexto",
 ]

@@ -254,13 +254,104 @@ def _mock_classificar(entrada: dict[str, Any]) -> dict[str, Any]:
     return {"eh_citacao": True, "familia": "processo", "tipo": "jurisprudencia", "trecho": janela[ini_a:fim_a]}
 
 
+# --- extrair_citacoes (mock): formas que os detectores por regex NÃO cobrem --------------------
+# O mock só serve para exercitar o caminho completo (janelas → validação → re-detecção → resolução)
+# e os testes; o modelo real generaliza para formas que nenhuma heurística prevê.
+_OCR = "OoIl|SsgqGBZz"
+#: Número com pontuação e letras de OCR; SEM espaços dentro e com pelo menos um dígito real à vista
+#: (lookahead) — quantificadores limitados e sem grupos opcionais aninhados, para nunca degenerar em
+#: retrocesso exponencial (o mock roda em todo conjunto adversarial; um regex patológico travava
+#: minutos em ``siglas``).
+_NUM_OCR = rf"(?=[0-9{_OCR}.\-]{{0,30}}[0-9])[0-9{_OCR}][0-9{_OCR}.\-]{{2,28}}[0-9{_OCR}]"
+_CLASSES_EXTENSO = {
+    "recurso especial": ["RESP"], "recurso extraordinario": ["RE"], "reclamacao": ["RCL"],
+    "habeas corpus": ["HC"], "agravo em recurso especial": ["ARESP"], "mandado de seguranca": ["MS"],
+    "recurso de revista": ["RR"], "agravo interno no recurso especial": ["AGINT", "RESP"],
+    "agravo regimental no recurso especial": ["AGR", "RESP"], "agravo regimental no recurso extraordinario": ["AGR", "RE"],
+}
+_CLASSES_SIGLA = {"REsp": ["RESP"], "RE5p": ["RESP"], "AREsp": ["ARESP"], "RE": ["RE"], "ARE": ["ARE"], "Rcl": ["RCL"], "RHC": ["RHC"],
+                  "HC": ["HC"], "RMS": ["RMS"], "MS": ["MS"], "ADI": ["ADI"], "RR": ["RR"], "AIRR": ["AIRR"],
+                  "APL": ["APL"], "REspe": ["RESPE"]}
+
+
+def _palavra_quebravel(palavra: str) -> str:
+    """Regex de ``palavra`` tolerando uma quebra curta (espaço, hífen+quebra de linha: ``[-\\s]{0,2}``)
+    entre letras e OCR leve nas letras confundíveis (``Re curso``, ``Recla-\nmação``, ``Sún1ula``).
+    Só classes de caracteres e quantificadores limitados — nada de grupos opcionais aninhados."""
+    partes = []
+    alt = {"a": "[aãA4]", "e": "[eéE3c]", "o": "[oóO0]", "u": "[uúU]", "c": "[cçC]", "i": "[iI1l]", "m": "[mM]", "l": "[lL1I]"}
+    for ch in palavra:
+        if ch == " ":
+            partes.append(r"[-\s]{1,3}")
+        else:
+            classe = alt.get(ch.lower()) or (f"[{ch.lower()}{ch.upper()}]" if ch.isalpha() else re.escape(ch))
+            partes.append(classe + r"[-\s]{0,2}")
+    return "".join(partes)
+
+
+_RE_EXTENSO_UF = re.compile(r"(?:oriund[oa]\s+d[oe]\s+|d[oa]\s+Estado\s+d[oe]\s+)([A-ZÀ-Ý][a-zà-ÿ]+(?:\s+[A-ZÀ-Ý][a-zà-ÿ]+)*)")
+_UF_POR_EXTENSO = {"Sao Paulo": "SP", "Rio de Janeiro": "RJ", "Minas Gerais": "MG", "Parana": "PR", "Rio Grande do Sul": "RS",
+                   "Bahia": "BA", "Distrito Federal": "DF", "Santa Catarina": "SC", "Pernambuco": "PE", "Ceara": "CE", "Goias": "GO"}
+_RE_MOCK_PROCESSO_EXTENSO = [
+    (re.compile(_palavra_quebravel(nome) + rf"\s*(?:de\s+)?(?:n[º°.o]?\s*|n[uú]mero\s+)?(?P<num>{_NUM_OCR})(?P<uf>\s*[/(–\-]\s*[A-Z]{{2}}\)?)?", re.I), cadeia)
+    for nome, cadeia in sorted(_CLASSES_EXTENSO.items(), key=lambda kv: -len(kv[0]))
+]
+_RE_MOCK_PROCESSO_COLADO = re.compile(
+    rf"(?<![A-Za-z])(?P<classe>{'|'.join(re.escape(k) for k in _CLASSES_SIGLA)})(?P<num>\d[\d.\-]{{3,30}}\d)(?P<uf>\s*/\s*[A-Z]{{2}})?")
+_RE_MOCK_SUMULA_OCR = re.compile(rf"(?<![A-Za-z])(?P<palavra>S[úu]?[nm]?[1l]?u?[l1]a)\s+(?:n[º°.o]?\s*)?(?P<num>[0-9{_OCR}]{{1,4}})(?:\s+d[oa]\s+(?P<trib>STJ|STF|TST|TSE|STM))?")
+_RE_MOCK_VAGA_ORGAO = re.compile(
+    r"julgad[oa]s?\s+pel[oa]\s+\d+[ªa]\s+(?:Turma|Se[çc][ãa]o|C[âa]mara)\s+d[oa]\s+(?P<trib>STJ|STF|TST|TSE|STM)\s+em\s+(?P<ano>(?:19|20)\d{2}),?\s+(?:sob\s+a\s+)?relatoria\s+d[oa]\s+(?:Ministr[oa]\s+)?"
+    r"(?P<rel>[A-ZÀ-Ý][\wÀ-ÿ]+(?:\s+(?:d[aeo]s?\s+)?[A-ZÀ-Ý][\wÀ-ÿ]+){1,4})")
+
+
+def _mock_extrair(entrada: dict[str, Any]) -> dict[str, Any]:
+    janela: str = entrada["janela"]
+    ocupados = [(int(d["inicio"]), int(d["fim"])) for d in entrada.get("ja_detectadas") or []]
+    saida: list[dict[str, Any]] = []
+
+    def livre(ini: int, fim: int) -> bool:
+        return not any(min(fim, f) - max(ini, i) > 0 for i, f in ocupados)
+
+    def aceitar(ini: int, fim: int, item: dict[str, Any]) -> None:
+        ini, fim = aparar_fronteiras(janela, ini, fim)
+        if fim > ini and livre(ini, fim):
+            ocupados.append((ini, fim))
+            saida.append({"trecho": janela[ini:fim], "classe_cadeia": [], "numero_digitos": None, "uf": None,
+                          "tribunal": None, "numero_sumula": None, "vinculante": False, "artigo": None,
+                          "diploma": None, "ano": None, "relator": None, **item})
+
+    def digitos(bruto: str) -> str:
+        return "".join(CONFUSOES.get(c, c) for c in bruto if c.isdigit() or c in CONFUSOES)
+
+    for m in _RE_MOCK_PROCESSO_COLADO.finditer(janela):
+        cadeia = _CLASSES_SIGLA[m.group("classe")]
+        uf = (m.group("uf") or "").strip(" /").upper() or None
+        aceitar(m.start(), m.end(), {"familia": "processo", "classe_cadeia": cadeia, "numero_digitos": digitos(m.group("num")),
+                                     "uf": uf if uf in UFS else None, "tribunal": inferir_tribunal(cadeia[-1]) if cadeia else None})
+    for rx, cadeia in _RE_MOCK_PROCESSO_EXTENSO:
+        for m in rx.finditer(janela):
+            if sum(ch.isdigit() for ch in m.group("num")) < 3:
+                continue
+            uf = (m.group("uf") or "").strip(" /()–-").upper() or None
+            fim = m.end()
+            aceitar(m.start(), fim, {"familia": "processo", "classe_cadeia": cadeia, "numero_digitos": digitos(m.group("num")),
+                                     "uf": uf if uf in UFS else None, "tribunal": inferir_tribunal(cadeia[-1])})
+    for m in _RE_MOCK_SUMULA_OCR.finditer(janela):
+        if m.group("palavra").lower() in ("súmula", "sumula"):
+            continue  # o regex do núcleo já cobre a forma limpa
+        aceitar(m.start(), m.end(), {"familia": "sumula", "numero_sumula": digitos(m.group("num")), "tribunal": m.group("trib")})
+    for m in _RE_MOCK_VAGA_ORGAO.finditer(janela):
+        aceitar(m.start(), m.end(), {"familia": "vaga", "tribunal": m.group("trib"), "ano": m.group("ano"), "relator": m.group("rel")})
+    return {"citacoes": saida}
+
+
 class MockArbitro(ArbitroBase):
     """Árbitro heurístico determinístico (sem modelo). Para testes e fallback."""
 
     nome = "mock"
 
-    def __init__(self, cache: CacheLLM | None = None, **_: Any) -> None:
-        super().__init__(modelo="mock", revisao="0", cache=cache, assinatura="heuristico-v1")
+    def __init__(self, cache: CacheLLM | None = None, somente_cache: bool = False, **_: Any) -> None:
+        super().__init__(modelo="mock", revisao="0", cache=cache, assinatura="heuristico-v1", somente_cache=somente_cache)
 
     def _gerar(self, pedidos: list[Pedido]) -> list[str]:
         saida: list[str] = []
@@ -269,6 +360,8 @@ class MockArbitro(ArbitroBase):
                 obj = _mock_normalizar(p.entrada)
             elif p.operacao == "escolher":
                 obj = _mock_escolher(p.entrada)
+            elif p.operacao == "extrair":
+                obj = _mock_extrair(p.entrada)
             else:
                 obj = _mock_classificar(p.entrada)
             saida.append(json.dumps(obj, ensure_ascii=False))
@@ -339,9 +432,12 @@ class TransformersArbitro(ArbitroBase):
         # por vez, e a decodificação greedy em lote com padding pode diferir numericamente da de
         # prompt único — a chave do cache não inclui a composição do lote. ``CACA_LLM_LOTE`` > 1
         # continua possível para medição, mas a assinatura do backend passa a registrá-lo.
-        self.verificar_dependencias()
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        if not somente_cache:
+            self.verificar_dependencias()
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+        else:
+            torch = AutoModelForCausalLM = AutoTokenizer = None  # reprodução sem GPU: só o cache responde
         self.quatro_bits = _bool_env("CACA_LLM_4BIT") if quatro_bits is None else quatro_bits
         self.seed = int(seed)
         self.lote = max(1, int(lote))
@@ -450,8 +546,11 @@ class VLLMArbitro(ArbitroBase):
         somente_cache: bool = False,
         **_: Any,
     ) -> None:
-        self.verificar_dependencias()
-        from vllm import LLM, SamplingParams
+        if not somente_cache:
+            self.verificar_dependencias()
+            from vllm import LLM, SamplingParams
+        else:
+            LLM = SamplingParams = None
         self.seed = int(seed)
         self.max_new_tokens = dict(prompts.MAX_TOKENS_NOVOS, **(max_new_tokens or {}))
         self.guiado = guiado
@@ -542,7 +641,8 @@ def obter_arbitro(nome: str | None, **cfg: Any) -> ArbitroBase | None:
     ``revisao`` (``CACA_MODELO_REVISAO``), ``cache`` (:class:`CacheLLM`, caminho,
     ``":memory:"`` ou ``None`` para desligar; padrão ``CACA_CACHE_LLM``),
     ``quatro_bits`` (``CACA_LLM_4BIT``), ``lote`` (``CACA_LLM_LOTE``),
-    ``limite_vram_gb``, ``seed``, ``somente_cache``. Nome desconhecido →
+    ``limite_vram_gb``, ``seed``, ``somente_cache`` (também ``CACA_LLM_SOMENTE_CACHE=1``: o modelo não é
+    carregado e só o cache responde; ``CACA_LLM_CACHE_IMPORTAR=<jsonl>`` importa antes). Nome desconhecido →
     ``ValueError``; dependência ausente → :class:`ErroDependencia`.
     """
     if nome is None or str(nome).strip().lower() in ("", "nenhum", "none", "no", "off"):
@@ -550,7 +650,9 @@ def obter_arbitro(nome: str | None, **cfg: Any) -> ArbitroBase | None:
     chave = str(nome).strip().lower()
     if chave not in BACKENDS:
         raise ValueError(f"árbitro desconhecido: {nome!r} (opções: nenhum, {', '.join(sorted(BACKENDS))})")
-    if chave != "mock":
+    somente_cache = bool(cfg.get("somente_cache")) or _bool_env("CACA_LLM_SOMENTE_CACHE")
+    cfg["somente_cache"] = somente_cache
+    if chave != "mock" and not somente_cache:
         # dependências primeiro: sem torch/transformers não se cria cache nenhum em disco
         # (revisão R3-06) e o HF_HOME aponta para os pesos montados (revisão R3-03)
         BACKENDS[chave].verificar_dependencias()
@@ -568,8 +670,18 @@ def obter_arbitro(nome: str | None, **cfg: Any) -> ArbitroBase | None:
     cfg.setdefault("revisao", config.revisao_llm())
     if "lote" not in cfg and config.lote_llm():
         cfg["lote"] = config.lote_llm()
+    importar = os.environ.get("CACA_LLM_CACHE_IMPORTAR", "").strip()
+    if importar and cache is not None:
+        # reprodução sem GPU (ADR 0003): o JSONL exportado da execução de referência entra no cache
+        # antes da primeira consulta; com CACA_LLM_SOMENTE_CACHE=1 o modelo nem é carregado
+        try:
+            n = cache.importar_jsonl(importar)
+            logger.info("cache do árbitro: %d resposta(s) importada(s) de %s", n, importar)
+        except OSError as exc:
+            logger.error("não foi possível importar %s no cache do árbitro: %s", importar, exc)
     arb = BACKENDS[chave](cache=cache, **cfg)
-    logger.info("árbitro %s pronto (modelo=%s, rev=%s)", arb.nome, arb.modelo, arb.revisao or "?")
+    logger.info("árbitro %s pronto (modelo=%s, rev=%s%s)", arb.nome, arb.modelo, arb.revisao or "?",
+                ", somente cache" if somente_cache else "")
     return arb
 
 

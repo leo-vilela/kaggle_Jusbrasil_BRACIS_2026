@@ -47,18 +47,21 @@ e, em `real`, `id_canonico` certo), senão `y = 0`; `brier = média((c − y)²)
    gabarito com as regras da métrica (IoU ≥ 0,5 guloso; espúrios = erro), o catálogo do dev e os
    sintéticos (resolução direta dos spans do gabarito). `--validacao` mede o Brier fora da amostra
    (nunca o seed de treino). Saída `{"tabela", "meta"}` com contagens, Brier antes/depois e fontes.
-6. **Resultado gravado** (treino = dev 192 + n2_dev 280 + n2 agressivo seed 321 424; validação =
-   n3_ood seed 7 288): Brier treino 0,0031 → 0,0008; validação 0,0039 → 0,0007; no pipeline
-   completo do dev, Brier 0,0004/0,0005 por nível (bônus 0,1000). Caminhos sem observação
-   permanecem nos priors (`duplicata` 0,5, `llm_*`, `ocr_ambiguo` 0,6, `tribunal_incompativel`
-   0,7). Sub-caminhos raros com poucas observações ficam perto do prior (`ambiguo_chute` 0,40 →
-   0,52 com 1 acerto; `classe_divergente` 0,75 → 0,92 com 9/9).
+6. **Resultado gravado** — *histórico (17/09)*: treino = dev 192 + n2_dev 280 + n2 agressivo seed
+   321 424; validação = n3_ood seed 7 288; Brier treino 0,0031 → 0,0008; validação 0,0039 → 0,0007.
+   *Vigente (20/09, ver "Retreino reproduzível" abaixo)*: treino = 35 conjuntos no nível do
+   pipeline (dev + n2_dev + n2_ag_treino + 32 adversariais = 4.004 decisões, acurácia 99,85 %);
+   validação = `n3_ood` (288 decisões, **fora do ajuste**): Brier 0,0027 → 0,0014; treino
+   0,0051 → 0,0018; dev 1,0999960. Caminhos sem observação permanecem nos priors (`duplicata`
+   0,5, `llm_*`, `ocr_ambiguo` 0,6, `tribunal_incompativel` 0,7). Sub-caminhos raros com poucas
+   observações ficam perto do prior.
 7. **Revisão da rodada 1** (16/09): dois caminhos novos com prior de domínio, sem observação no
    dev — `processo:0cand:ocr_sem_dono` 0,90 (todas as letras convertidas pelo mapa inverso do
    gerador e a chave não tem dono: tão inventada quanto um `0cand` limpo, descontada a chance de
    uma confusão fora do mapa) e `dispositivo:fora_da_tabela:diploma_outro` 0,85 (diploma
    reconhecido mas não canonizado: pode ser OCR fora da tolerância). `ocr_reparado` mantém 0,88.
-   Nos conjuntos adversariais da revisão (não usados no treino) o Brier ficou ≤ 0,015.
+   Nos conjuntos adversariais da revisão (então não usados no treino) o Brier ficou ≤ 0,015;
+   desde o retreino de 20/09 eles fazem parte do treino (e `n3_ood` é a validação).
 
 ## Revisão da rodada 2 (17/09)
 
@@ -166,3 +169,33 @@ baixos) para que um conjunto adversarial de distratores de tema não rebaixasse 
 
 **Quando revisitar.** Se o conjunto cego mostrar erro em algum caminho consolidado, voltar esse
 caminho a 0,98 (`N_MINIMO_CONSOLIDADO` maior ou lista de exclusão) e retreinar.
+
+## Retreino reproduzível e validação fora da amostra (20/09/2026, correção)
+
+**Problema encontrado.** A tabela gerada logo após o teto consolidado (v1.1) tinha sido treinada
+com os 36 conjuntos — inclusive `n3_ood`, que esta ADR descrevia como validação — e `meta.validacao`
+estava vazio; além disso, os 36 rastros usados tinham sido produzidos à mão, sem comando no bundle
+que os regenerasse. A afirmação "validação fora da amostra" não valia para a tabela entregue.
+
+**Correção.** `scripts/calibrar_completo.py` (`make calibrar-completo`, `GRAVAR=1` para gravar) é o
+único caminho oficial de treino: regenera os sintéticos e os 32 conjuntos adversariais (seeds
+fixas), roda o núcleo com `--rastro` em cada um, treina sobre **35** e mantém `n3_ood` **fora do
+ajuste** como validação no nível do pipeline (`treinar_calibracao.py --validacao-rastro`, que
+recusa um rastro presente nos dois lados). O `meta` passou a registrar `validacao` (n, acertos,
+Brier antes/depois), `teto_consolidado`, `n_minimo_consolidado` e `caminhos_consolidados`;
+`tests/test_calibracao.py` exige, na tabela versionada, validação não vazia e disjunta do treino,
+Brier de validação não pior após o ajuste, e que todo caminho acima de 0,98 tenha ≥ 100 decisões
+sem erro. Sem `--gravar`, o script compara a tabela reproduzida com a versionada e falha se
+diferirem (caminhos ou contagens) — é a prova de reprodução.
+
+**Efeito.** `sumula:fora_da_tabela` cai de 100 para 89 decisões sem `n3_ood` e perde o teto
+consolidado (0,998 → 0,98); os demais 11 caminhos consolidados permanecem. Dev 1,0999975 →
+**1,0999960**; nos 36 conjuntos a maior variação foi −0,0000048 (`r3_sumulas_forma`), τ = 0 em
+todos. O limiar `N_MINIMO_CONSOLIDADO = 100` **não** foi rebaixado para recuperar o caminho: a
+posteriori de Laplace com 89/89 ainda passa de 0,999, mas mudar o limiar depois de ver o resultado
+seria ajuste ao dev.
+
+**O que a calibração não pode provar.** A acurácia de treino é 99,85 % e a de validação 100 %:
+a tabela aprende sobretudo *n* e o prior, não a taxa de erro real — é um limite superior. Os
+conjuntos de treino e validação foram gerados pelo desenvolvedor e pelos revisores a partir da
+mesma leitura dos dados; a única evidência independente virá do conjunto cego.

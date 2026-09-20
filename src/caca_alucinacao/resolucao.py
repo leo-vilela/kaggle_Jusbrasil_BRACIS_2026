@@ -738,12 +738,14 @@ def _resolver_processo(achado: Achado, base: BaseCanonica, arbitro: Any, context
     prefixo = "processo"
 
     cands = base.candidatos_por_numero(cit.digitos) if cit.digitos else []
+    chaves_ja_tentadas: set[str] = {cit.digitos} if cit.digitos else set()
 
     # --- reparo determinístico de OCR que a normalização recusa (letra inicial,
     # letra isolada no meio de um CNJ): só letras viram dígitos, e só se a chave
     # padrão não tem dono. Uma única alternativa com dono resolve; várias → ambíguo.
     if not cands:
         alternativas = [(rot, ch) for rot, ch in chaves_alternativas(cit.sem_uf, cit.inicio_numero) if ch != cit.digitos]
+        chaves_ja_tentadas.update(ch for _, ch in alternativas)
         com_dono = [(rot, ch, base.candidatos_por_numero(ch)) for rot, ch in alternativas]
         com_dono = [x for x in com_dono if x[2]]
         if alternativas:
@@ -777,17 +779,23 @@ def _resolver_processo(achado: Achado, base: BaseCanonica, arbitro: Any, context
                 return _decisao("inventada", None, "processo:llm_nao_citacao", (), detalhes)
             else:
                 nova = _aplicar_normalizacao(cit, r)
-                detalhes["llm"] = "normalizou"
                 detalhes["digitos_llm"] = nova.digitos
-                prefixo = "processo:llm_normalizou"
                 cands = base.candidatos_por_numero(nova.digitos) if nova.digitos else []
-                if not cands:
-                    return _decisao("inventada", None, f"{prefixo}:0cand", (), detalhes)
-                cit = nova
-                detalhes.update({"digitos": cit.digitos, "formato": cit.formato,
-                                 "cadeia_citada": " ".join(cit.cadeia), "uf": cit.uf or "",
-                                 "tribunal": cit.tribunal or ""})
-                return _decidir_entre_candidatos(achado, cit, cands, base, arbitro, contexto, prefixo, detalhes)
+                if not cands and nova.digitos in chaves_ja_tentadas:
+                    # o árbitro só devolveu uma chave que o núcleo já tinha consultado (a padrão ou
+                    # uma alternativa de OCR), também sem dono: nenhuma informação nova — a decisão
+                    # e a confiança calibrada são as do núcleo (ocr_sem_dono/ocr_ambiguo)
+                    detalhes["llm"] = "confirmou"
+                else:
+                    detalhes["llm"] = "normalizou"
+                    prefixo = "processo:llm_normalizou"
+                    if not cands:
+                        return _decisao("inventada", None, f"{prefixo}:0cand", (), detalhes)
+                    cit = nova
+                    detalhes.update({"digitos": cit.digitos, "formato": cit.formato,
+                                     "cadeia_citada": " ".join(cit.cadeia), "uf": cit.uf or "",
+                                     "tribunal": cit.tribunal or ""})
+                    return _decidir_entre_candidatos(achado, cit, cands, base, arbitro, contexto, prefixo, detalhes)
         if detalhes.get("ocr_reparo") == "sem_dono":
             # todas as letras foram convertidas (mapa inverso do gerador) e a chave não tem dono:
             # tão inventada quanto um 0cand limpo, com uma chave calibrada própria

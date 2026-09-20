@@ -19,7 +19,7 @@ DOCKER_USER ?=
 export PYTHONPATH := src
 export PYTHONHASHSEED := 0
 
-.PHONY: ajuda reproduzir dados catalogo indice testar lint vazamento vazamento-historico rodar avaliar submissao sinteticos adversarial calibrar docker docker-rodar docker-digests docker-llm limpar
+.PHONY: ajuda reproduzir dados catalogo indice testar lint vazamento vazamento-historico rodar avaliar submissao sinteticos adversarial calibrar calibrar-completo comparar-arbitro docker docker-rodar docker-digests docker-llm limpar
 
 ajuda:
 	@echo "alvos: reproduzir dados indice testar lint rodar avaliar submissao sinteticos adversarial calibrar docker docker-rodar docker-llm limpar"
@@ -66,11 +66,17 @@ sinteticos:       ## conjuntos sintéticos que os testes e a calibração espera
 	$(PYTHON) scripts/gerar_sinteticos.py --saida dados/sinteticos/n3_ood --n-docs 40 --nivel 3 --seed 7
 	$(PYTHON) scripts/gerar_sinteticos.py --saida dados/sinteticos/n2_ag_treino --n-docs 60 --nivel 2 --seed 321 --perfil agressivo
 
-adversarial:      ## regenera os 32 conjuntos adversariais das revisões (scripts/adversarial/, seeds fixas) e roda pipeline + métrica em cada um
+adversarial:      ## regenera os 34 conjuntos adversariais das revisões (scripts/adversarial/, seeds fixas) e roda pipeline + métrica em cada um
 	bash scripts/adversarial/rodar_todos.sh
 
-calibrar:         ## ajusta $(CALIBRACAO) pela acurácia empírica por caminho (scripts/treinar_calibracao.py)
+calibrar:         ## ajuste rápido de $(CALIBRACAO) a partir de UM rastro (scripts/treinar_calibracao.py); o oficial é calibrar-completo
 	$(PYTHON) scripts/treinar_calibracao.py --rastro $(RASTRO) --relatorio $(RELATORIO) --saida $(CALIBRACAO)
+
+calibrar-completo: ## retreino oficial e reproduzível: regenera sintéticos + 34 adversariais, pipeline em 38 conjuntos, treina em 37 e valida em n3_ood; compara com dados/calibracao.json (GRAVAR=1 grava)
+	$(PYTHON) scripts/calibrar_completo.py $(if $(GRAVAR),--gravar,)
+
+comparar-arbitro: ## núcleo × árbitro (ARBITRO=mock|transformers|vllm) em todos os conjuntos, com a métrica oficial: Δscore, τ, precisão do extrator e VEREDITO (ADR 0003)
+	$(PYTHON) scripts/comparar_arbitro.py --arbitro $(if $(filter nenhum,$(ARBITRO)),mock,$(ARBITRO)) $(if $(CACHE_LLM),--cache $(CACHE_LLM),)
 
 docker:           ## imagem do núcleo determinístico (sem dados nem pesos); a calibração viaja dentro
 	@test -f $(CALIBRACAO) || { echo '{}' > $(CALIBRACAO); echo "AVISO: $(CALIBRACAO) ausente; criada vazia"; }

@@ -235,6 +235,33 @@ class TestPersistencia(unittest.TestCase):
         self.assertLessEqual(tabela.get("processo:duplicata", 0.5), 0.85)
         self.assertGreaterEqual(tabela.get("processo:duplicata", 0.5), 0.5)
 
+    def test_calibracao_json_do_repositorio_tem_validacao_fora_da_amostra(self) -> None:
+        """ADR 0007 §6: a tabela entregue foi treinada com um conjunto MANTIDO FORA do ajuste
+        (``scripts/calibrar_completo.py``: ``n3_ood``), e o meta prova isso: validação não vazia,
+        nenhum conjunto de validação entre as fontes de treino, Brier de validação não pior
+        após o ajuste, e um caminho só consolida (> 0,98) com ≥ N_MINIMO decisões sem erro."""
+        p = RAIZ / "dados" / "calibracao.json"
+        if not p.exists():
+            self.skipTest("dados/calibracao.json ausente")
+        meta = json.loads(p.read_text(encoding="utf-8")).get("meta") or {}
+        validacao = meta.get("validacao") or []
+        self.assertTrue(validacao, "meta.validacao vazio: tabela treinada sem conjunto fora da amostra")
+        fontes = {f["nome"].split(":", 1)[-1] for f in meta.get("fontes", [])}
+        for v in validacao:
+            self.assertGreater(v["n"], 0, v["nome"])
+            self.assertNotIn(v["nome"].split(":", 1)[-1], fontes, "conjunto de validação também está no treino")
+            self.assertLessEqual(v["brier_depois"], v["brier_antes"] + 1e-9, v["nome"])
+        contagens = meta.get("contagens") or {}
+        tabela = cal.carregar(p)
+        for cam in meta.get("caminhos_consolidados", []):
+            c = contagens.get(cam) or {}
+            self.assertGreaterEqual(c.get("n", 0), cal.N_MINIMO_CONSOLIDADO, cam)
+            self.assertEqual(c.get("acertos"), c.get("n"), cam)
+            self.assertGreater(tabela[cam], CONFIANCA_TETO, cam)
+        for cam, v in tabela.items():
+            if v > CONFIANCA_TETO:
+                self.assertIn(cam, meta.get("caminhos_consolidados", []), cam)
+
 
 if __name__ == "__main__":
     unittest.main()

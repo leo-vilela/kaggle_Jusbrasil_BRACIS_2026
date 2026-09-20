@@ -12,7 +12,11 @@ Fontes de avaliação (``(caminho, acerto)`` por citação), combináveis:
   (mede só a resolução; padrão se o arquivo existir);
 * ``--sinteticos dados/sinteticos/n2_dev …`` — resolução direta dos sintéticos
   (``goldenset_estendido.csv``); ``--validacao`` recebe pastas sintéticas usadas
-  **só** para medir o Brier fora da amostra (nunca reaproveite o seed de treino).
+  **só** para medir o Brier fora da amostra (nunca reaproveite o seed de treino);
+* ``--validacao-rastro r.jsonl --validacao-gabarito g.csv`` — o mesmo, no nível do
+  pipeline completo (rastro alinhado ao gabarito), **nunca** entra no ajuste. O
+  ``meta.validacao`` gravado registra n, acurácia e Brier antes/depois de cada
+  conjunto de validação; ``scripts/calibrar_completo.py`` é o caminho oficial.
 
 Saída: ``{"tabela": {caminho: confiança}, "meta": {...}}`` — formato que
 ``cli.carregar_calibracao`` e ``calibracao.carregar`` leem. Imprime o Brier
@@ -88,6 +92,10 @@ def avaliacoes_de_rastro(rastro: Path, gabarito: Path) -> list[cal.Avaliacao]:
             r = json.loads(linha)
             if r.get("status") != "emitida" or not r.get("caminho"):
                 continue
+            if str(r.get("origem") or "").startswith("llm:extrator:mock"):
+                # o mock exercita o caminho, mas a sua precisão não é a do modelo real: essas
+                # decisões nunca treinam os caminhos ``llm:*`` (ADR 0003/0007)
+                continue
             preds.setdefault(r["documento_id"], []).append(r)
     saida: list[cal.Avaliacao] = []
     for doc in sorted(preds):
@@ -146,6 +154,10 @@ def main() -> int:
     ap.add_argument("--sem-catalogo", action="store_true")
     ap.add_argument("--sinteticos", type=Path, nargs="*", default=[], help="pastas sintéticas de TREINO")
     ap.add_argument("--validacao", type=Path, nargs="*", default=[], help="pastas sintéticas só para o Brier")
+    ap.add_argument("--validacao-rastro", type=Path, nargs="*", default=[],
+                    help="rastro.jsonl de conjuntos de VALIDAÇÃO (fora do ajuste; Brier no nível do pipeline)")
+    ap.add_argument("--validacao-gabarito", type=Path, nargs="*", default=[],
+                    help="goldenset.csv de cada --validacao-rastro (mesma ordem; padrão dados/goldenset.csv)")
     ap.add_argument("--tabela-inicial", type=Path, default=None, help="JSON com priors (padrão: TABELA_INICIAL)")
     ap.add_argument("--peso-prior", type=float, default=cal.PESO_PRIOR,
                     help="peso do prior em observações equivalentes (2 = Laplace puro)")
@@ -193,6 +205,18 @@ def main() -> int:
         import medir_resolucao as mr
 
         validacao.append((f"validacao:{pasta.name}", avaliacoes_de_resolucao(base, mr.achados_dos_sinteticos(pasta))))
+    if len(args.validacao_gabarito) > len(args.validacao_rastro):
+        print("--validacao-gabarito em excesso: informe um por --validacao-rastro", file=sys.stderr)
+        return 2
+    gabaritos_val = list(args.validacao_gabarito) + [GOLDENSET] * (len(args.validacao_rastro) - len(args.validacao_gabarito))
+    for r, g in zip(args.validacao_rastro, gabaritos_val):
+        if not r.exists() or not g.exists():
+            print(f"validação: rastro {r} ou gabarito {g} ausente", file=sys.stderr)
+            return 2
+        if any(r.resolve() == t.resolve() for t in args.rastro):
+            print(f"validação: {r} também está no treino — um conjunto não pode estar nos dois", file=sys.stderr)
+            return 2
+        validacao.append((f"validacao-rastro:{r.parent.name}/{r.name}", avaliacoes_de_rastro(r, g)))
 
     treino = [a for _, avs in fontes for a in avs]
     if not treino:
@@ -223,11 +247,14 @@ def main() -> int:
     meta = {
         "gerado_em": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "fontes": [{"nome": n, "n": len(avs), "acertos": sum(a.acerto for a in avs)} for n, avs in fontes],
-        "validacao": [{"nome": n, "n": len(avs), "brier_antes": cal.brier(avs, inicial), "brier_depois": cal.brier(avs, final)}
+        "validacao": [{"nome": n, "n": len(avs), "acertos": sum(a.acerto for a in avs),
+                       "brier_antes": cal.brier(avs, inicial), "brier_depois": cal.brier(avs, final)}
                       for n, avs in validacao],
         "brier_treino_antes": cal.brier(treino, inicial),
         "brier_treino_depois": cal.brier(treino, final),
         "peso_prior": args.peso_prior, "teto": cal.CONFIANCA_TETO, "piso": cal.CONFIANCA_PISO, "seed": SEED,
+        "teto_consolidado": cal.CONFIANCA_TETO_CONSOLIDADO, "n_minimo_consolidado": cal.N_MINIMO_CONSOLIDADO,
+        "caminhos_consolidados": sorted(c for c, v in final.items() if v > cal.CONFIANCA_TETO),
         "contagens": {k: {"n": v[0], "acertos": v[1]} for k, v in contagens.items()},
         "suavizacao": "(a + k*p0)/(n + k): Laplace generalizado, p0 = prior hierárquico da tabela inicial, k = peso_prior",
     }

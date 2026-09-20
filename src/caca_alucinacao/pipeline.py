@@ -28,7 +28,7 @@ import logging
 import math
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -192,6 +192,38 @@ def _sanear_achados(documento_id: str, texto: str, achados: Iterable[Achado],
     return sorted(aceitos, key=lambda a: (a.inicio, a.fim))
 
 
+EXTRATOR_ORIGEM = "llm:extrator"
+
+
+def _extrair_com_arbitro(documento_id: str, texto: str, achados: list[Achado], arbitro: Any,
+                         rastros: list[Rastro]) -> list[Achado]:
+    """Segundo estágio (opcional): citações que o regex não marcou, propostas pelo árbitro e
+    validadas contra o texto (:mod:`.llm.extrator`). Sem árbitro, ou com qualquer falha, devolve
+    ``achados`` intacto. Os novos entram marcados com ``origem`` ``llm:extrator:<backend>:<família>``
+    e passam pela mesma resolução e validação dos demais."""
+    if arbitro is None or not hasattr(arbitro, "extrair_citacoes"):
+        return achados
+    try:
+        from .llm import extrator
+    except ImportError:  # pragma: no cover
+        return achados
+    try:
+        novos, n_janelas = extrator.extrair(texto, achados, arbitro)
+    except Exception as exc:  # o extrator já é defensivo; última linha
+        log.warning("[%s] extrator LLM falhou (%s); seguindo só com o regex", documento_id, exc)
+        return achados
+    if n_janelas:
+        log.info("[%s] extrator LLM: %d janela(s) consultada(s), %d citação(ões) nova(s)",
+                 documento_id, n_janelas, len(novos))
+    if not novos:
+        return achados
+    backend = str(getattr(arbitro, "nome", "") or "desconhecido")
+    marcados = [replace(a, origem=f"{EXTRATOR_ORIGEM}:{backend}:{a.familia}") for a in novos]
+    juntos = sorted(achados + marcados, key=lambda a: (a.inicio, a.fim))
+    # o saneador garante de novo span válido e ausência de sobreposição (IoU ≥ 0,5 seria fatal)
+    return _sanear_achados(documento_id, texto, juntos, rastros)
+
+
 def _confianca_segura(valor: Any) -> float:
     try:
         v = float(valor)
@@ -235,6 +267,7 @@ def processar_texto_com_rastro(
         log.exception("[%s] detector falhou (%s); documento sem citações", documento_id, exc)
         brutos = []
     achados = _sanear_achados(documento_id, texto, brutos, rastros)
+    achados = _extrair_com_arbitro(documento_id, texto, achados, arbitro, rastros)
 
     citacoes: list[Citacao] = []
     for a in achados:
@@ -253,6 +286,11 @@ def processar_texto_com_rastro(
         # Contrato com resolucao.py: um achado de padrão AMPLO (forca < 1) que a base não
         # confirma vem marcado com detalhes["descartar"] == "1" — provavelmente não é
         # citação; emitir seria 1 FP certo. Omitir custa no máximo 1 FN se fosse citação.
+        if a.origem.startswith(EXTRATOR_ORIGEM):
+            # Achado proposto pelo LLM (ADR 0003, padrão ouro): a classe veio da base como para
+            # qualquer outro, mas a confiança tem caminho próprio (``llm:extrator:…``), que nunca
+            # herda a dos caminhos do regex nem recebe o teto consolidado (ADR 0007).
+            decisao = replace(decisao, caminho=f"{EXTRATOR_ORIGEM}:{decisao.caminho}")
         detalhes = getattr(decisao, "detalhes", None) or {}
         if str(detalhes.get("descartar", "")) == "1":
             log.info("[%s] (%d,%d) %s %s descartado pela resolução (caminho=%s)",

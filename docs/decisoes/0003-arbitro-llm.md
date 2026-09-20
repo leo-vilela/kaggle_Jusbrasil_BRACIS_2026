@@ -110,6 +110,78 @@ semântica.
 * `contexto` deve ser a janela de ± 300–450 chars em torno do trecho (o módulo recorta a 900).
 * Lote: `arbitro.executar_lote(operacao, [args, …])` agrupa os *misses* do cache numa chamada.
 
+## Padrão ouro: o árbitro LIGADO, como extrator de segundo estágio (20/09/2026)
+
+**Decisão.** O árbitro passa a ter um quarto papel, `extrair_citacoes`, e a imagem de submissão com
+GPU (`Dockerfile.llm`, `CACA_ARBITRO=transformers`) roda com ele ligado. O desenho segue o padrão
+para verificação de citações contra uma fonte autoritativa (*entity linking* restrito ao catálogo;
+recuperação antes de decisão): **o modelo só aponta onde olhar** — extrai e desambigua — e **nunca
+classifica**; a classe continua sendo função da cardinalidade da consulta à base.
+
+**Mecanismo** (`llm/extrator.py`, `pipeline._extrair_com_arbitro`, `arbitro.validar_extracao`):
+
+1. depois do regex, o texto fora do cabeçalho é dividido em janelas (parágrafos/frases ≤ 900
+   codepoints); só vão ao modelo as que têm **pistas de citação não cobertas** por um achado
+   (`nº`, `Rel.`, `Súm`, `art.`, sigla de tribunal, classe processual…) e algum dígito; no máximo
+   `MAX_JANELAS_POR_DOCUMENTO = 6` por documento, por ordem de pistas, e dentro de um orçamento de
+   30 s/doc (metade do envelope) — estourado o orçamento, as janelas restantes ficam como o regex
+   deixou;
+2. o modelo devolve propostas estruturadas (`trecho` literal, família, cadeia/número/UF, número da
+   súmula, artigo/diploma, tribunal/ano/relator); a validação determinística rejeita tudo que não
+   se prova no texto: span que não é substring literal da janela, span que toca uma citação já
+   detectada ou outra proposta, número que não se obtém de um token do span só por trocas letra→
+   dígito (`_numero_presente`; um dígito de OCR fora do número, como `RE5p` ou `Sún1ula`, não
+   invalida), UF/artigo/diploma/ano/relator ausentes do span, processo sem classe reconhecível,
+   span maior que o máximo da família (90/70/130/70/170);
+3. cada proposta aceita é **re-detectada**: os campos são renderizados na forma canônica que os
+   detectores por regex entendem (`AGINT no RESP 1234567/SP`, `Súmula 412 do TST`, `art. 802 do
+   Código Civil`, `julgado do STJ proferido em 2020 pela relatoria de X`, `Tema 1234 da repercussão
+   geral`) e passados por `deteccao.detectar`; o `Achado` herda os `dados` como um achado de regex,
+   com os offsets do span original e `origem = llm:extrator:<backend>:<família>`;
+4. a resolução é a de sempre (classe pela base); a confiança tem caminho próprio
+   (`llm:extrator:<caminho do núcleo>`), com priors conservadores (0,70–0,85), que **nunca herda**
+   dos caminhos do regex (fallback só dentro de `llm:*`), nunca recebe o teto consolidado
+   (`CAMINHOS_SEM_CONSOLIDACAO`) e só é treinado com rastros do modelo real (decisões de origem
+   `mock` são ignoradas por `treinar_calibracao.py`);
+5. abstenção, resposta inválida ou exceção do árbitro deixam o documento **exatamente** como o
+   regex o deixou (`tests/test_extrator.py`); o saneador do pipeline confere de novo que nenhum
+   span novo sobrepõe outro (IoU ≥ 0,5 seria fatal para a submissão).
+
+Os gatilhos anteriores continuam. Correção de 20/09 em `_resolver_processo`: quando
+`normalizar_citacao` devolve uma chave que o núcleo **já tinha consultado** (a padrão ou uma
+alternativa de OCR), também sem dono, a decisão e a confiança são as do núcleo (`ocr_sem_dono`/
+`ocr_ambiguo`), não `llm_normalizou:0cand` — o árbitro não trouxe informação nova, e rebaixar a
+confiança custava −0,002 em `r2_chave_parcial`.
+
+**Medição (padrão).** `scripts/comparar_arbitro.py` (`make comparar-arbitro ARBITRO=…`) roda o
+núcleo e o árbitro em todos os conjuntos, com a métrica oficial, e aplica o **critério de
+decisão**: o árbitro fica ligado se, e só se, (a) em nenhum conjunto o score cai mais que 0,0005;
+(b) em nenhum conjunto `inventada→real` aumenta; (c) nos conjuntos que forçam os gatilhos o score
+sobe (`r6_extrator_formas`) e o extrator não emite nada onde não há citação
+(`r6_extrator_distratores`); (d) o dev fica idêntico ou melhor. `scripts/adversarial/
+gerar_adversarial_r6.py` produz os dois conjuntos: formas que os detectores por regex **não**
+cobrem (medido em 20/09: classe colada ao número `REsp1.234.567/SP`, `recurso especial de número
+N`, palavra quebrada `Re curso`/`Recla-⏎mação`, OCR na palavra `Sún1ula`, vaga com órgão
+julgador) e janelas cheias de pistas sem citação.
+
+**Resultado com o `mock`** (20/09; o mock é uma heurística que exercita o caminho, não o modelo):
+37 de 38 conjuntos **byte a byte idênticos** ao núcleo (0 citações emitidas pelo extrator, Δ = 0);
+`r6_extrator_formas` 0,59657 → 1,09680 (+0,500; 69 citações extraídas, 69 certas, τ = 0);
+`r6_extrator_distratores` 0 emissões. Veredito do critério: LIGAR. A medição com o **modelo
+real** (`scripts/rodar_llm_local.py` na RTX 5090: ambiente, pesos na revisão fixa, fumaça,
+`comparar_arbitro --arbitro transformers`, dev com árbitro, exportação do cache) é o passo que
+decide de fato — o mock não mede a precisão do Qwen.
+
+**Reprodução sem GPU.** Todas as respostas do modelo ficam em `CACA_CACHE_LLM` (SQLite) e são
+exportadas em JSONL (`cache_llm.jsonl`); com `CACA_LLM_SOMENTE_CACHE=1` e
+`CACA_LLM_CACHE_IMPORTAR=<jsonl>` o backend `transformers`/`vllm` nem carrega o modelo (nem exige
+torch) e responde só do cache — a mesma saída, byte a byte, em qualquer máquina. Um *miss* no
+cache é abstenção (o documento fica como o regex deixou), nunca uma chamada.
+
+**Custo.** No dev, 4–6 janelas por documento vão ao modelo (0 extrações com o mock). Com
+prompt ≈ 1,2k tokens e resposta ≤ 480 tokens: 5090 ≈ 2–3 s por chamada (≈ 15 s/doc), L4 ≈ 6–10 s
+(≈ 40–60 s/doc, no limite — o orçamento de 30 s/doc corta as janelas menos promissoras). Medir.
+
 ## Revisão da rodada 4 (20/09) — o árbitro é residual POR DESENHO (R3q-10)
 
 Medido com `--arbitro mock`: **0 chamadas** ao modelo nos 26 documentos do dev e nos 40 do
@@ -172,8 +244,9 @@ com ≥ 2 letras ambíguas sem reparo) — pendência registrada abaixo, não bl
 
 ## Pendências
 
-* Perfil do gerador que force os gatilhos do árbitro (R3q-10) e teste de integração
-  LLM→resolução com `mock`; hoje o árbitro é dormente nos dados do desafio.
+* ~~Perfil do gerador que force os gatilhos do árbitro (R3q-10) e teste de integração
+  LLM→resolução com `mock`~~ — feito em 20/09 (`gerar_adversarial_r6.py`, `tests/test_extrator.py`,
+  `comparar_arbitro.py`); falta a medição com o modelo real (`rodar_llm_local.py`).
 * **Pesos**: huggingface.co é inacessível deste ambiente; a revisão está fixada (acima) mas o
   download (`bash scripts/baixar_modelo.sh` no WSL2) e o `modelos/manifesto_modelo.json` com
   tamanhos/SHA-256 ainda precisam ser gerados na máquina com GPU.

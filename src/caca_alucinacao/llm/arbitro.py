@@ -11,6 +11,12 @@ O árbitro é chamado **só em casos residuais** (docs/02_arquitetura.md, seçã
 * :meth:`Arbitro.classificar_span` confirma/descarta um candidato fraco e ajusta
   as fronteiras dentro da janela dada; o span devolvido tem de ser substring
   literal da janela e sobrepor o candidato original.
+* :meth:`Arbitro.extrair_citacoes` (extrator de segundo estágio, ADR 0003 §"padrão
+  ouro") propõe citações que o regex não marcou numa janela; cada proposta só vale
+  se o span for substring literal da janela, não tocar as já detectadas e trouxer
+  os campos **literalmente** presentes no span (número por :func:`digitos_compativeis`,
+  UF, artigo, diploma, ano, relator). A classe nunca vem do modelo: o pipeline
+  reconstrói o achado e o resolve contra a base como qualquer outro.
 
 Qualquer falha (dependência ausente, exceção do modelo, JSON inválido, campo
 fora do domínio) resulta em **abstenção** (``None``), nunca em exceção que
@@ -103,6 +109,10 @@ class Arbitro(Protocol):
         desambigua ocorrências repetidas. ``eh_citacao=False`` vem com
         ``familia="nenhuma"`` e os offsets do candidato original.
         """
+
+    def extrair_citacoes(self, janela: str, ja_detectadas: list[dict[str, Any]] | None = None) -> list[dict[str, Any]] | None:
+        """Citações que o regex não marcou na ``janela``, já validadas contra o texto
+        (:func:`validar_extracao`); lista vazia = nada novo; ``None`` = abstenção."""
 
 
 @dataclass(frozen=True)
@@ -398,6 +408,133 @@ def validar_classificacao(
             "inicio_rel": ini, "fim_rel": fim, "trecho": contexto[ini:fim]}
 
 
+def _literal_no_span(span: str, valor: Any, minimo: int = 2) -> bool:
+    """``valor`` (string) aparece no span, ignorando caixa e diferenças de espaço em branco."""
+    if not isinstance(valor, str) or len(valor.strip()) < minimo:
+        return False
+    partes = [re.escape(p) for p in valor.split()]
+    return re.search(r"\s+".join(partes), span, re.I) is not None
+
+
+def _digitos_de(valor: Any) -> str:
+    if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+        valor = str(int(valor))
+    return re.sub(r"[^0-9]", "", valor) if isinstance(valor, str) else ""
+
+
+_RE_TRIBUNAL_EXTENSO = re.compile(
+    r"supremo\s+tribunal|superior\s+tribunal\s+de\s+justi|tribunal\s+superior\s+(?:do\s+trabalho|eleitoral|militar)", re.I)
+_RE_ANO = re.compile(r"(?<!\d)(19|20)\d{2}(?!\d)")
+MAX_CITACOES_EXTRAIDAS = 12
+#: Comprimento máximo do span por família (codepoints): no dev o maior span tem < 90; um span que
+#: engole a frase inteira nunca casa com o gabarito (IoU) e só produziria FP.
+COMPRIMENTO_MAXIMO_SPAN = {"processo": 90, "sumula": 70, "dispositivo": 130, "tema": 70, "vaga": 170}
+_RE_TOKEN_NUMERICO = re.compile(r"[0-9OoIl|SsgqGBZz][0-9OoIl|SsgqGBZz.\-\s/]*")
+
+
+def _numero_presente(span: str, digitos: str) -> bool:
+    """Algum token numérico do span (dígitos, pontuação e letras confundíveis de OCR) produz
+    ``digitos`` só por trocas letra→dígito? Um dígito de OCR fora do número (``RE5p``, ``Sún1ula``)
+    não invalida o número que vem depois."""
+    if not digitos:
+        return False
+    for m in _RE_TOKEN_NUMERICO.finditer(span):
+        tok = m.group(0)
+        if not any(c.isdigit() for c in tok):
+            continue
+        # tenta o token inteiro e cada sufixo que começa num dígito (descarta letras iniciais)
+        inicios = [0] + [i for i, c in enumerate(tok) if c.isdigit()]
+        for i in inicios[:6]:
+            if digitos_compativeis(tok[i:], digitos):
+                return True
+    return False
+
+
+def validar_extracao(janela: str, saida: dict[str, Any] | None,
+                     ja_detectadas: list[dict[str, Any]] | None = None) -> list[dict[str, Any]] | None:
+    """Valida a resposta de ``extrair_citacoes``: lista (possivelmente vazia) de citações aceitas,
+    cada uma com ``inicio_rel``/``fim_rel``/``trecho``/``familia`` e os campos conferidos; ``None``
+    se a resposta não tem a forma esperada (abstenção).
+
+    Regras (todas deterministas; o modelo nunca é acreditado sem prova no texto):
+    * o ``trecho`` é substring literal da janela (tolerando só espaço em branco), aparado pela
+      regra geral de fronteiras, com 3–300 caracteres, sem tocar as citações já detectadas nem
+      outra proposta aceita;
+    * ``processo``: cadeia de classes canônica não vazia e ``numero_digitos`` obtível do span só por
+      trocas letra→dígito (:func:`digitos_compativeis`), ≥ 3 dígitos; UF só se está no span;
+    * ``sumula``/``tema``: número obtível do span pela mesma regra;
+    * ``dispositivo``: artigo obtível do span e diploma literalmente presente;
+    * ``vaga``: tribunal (sigla ou extenso), ano e nome do relator (≥ 2 palavras) presentes no span.
+    """
+    if not isinstance(saida, dict):
+        return None
+    cits = saida.get("citacoes")
+    if cits is None:
+        return None
+    if not isinstance(cits, list):
+        return None
+    ocupados: list[tuple[int, int]] = [(int(d["inicio"]), int(d["fim"])) for d in (ja_detectadas or [])
+                                       if isinstance(d, dict) and "inicio" in d and "fim" in d]
+    aceitas: list[dict[str, Any]] = []
+    for item in cits[:MAX_CITACOES_EXTRAIDAS]:
+        if not isinstance(item, dict):
+            continue
+        trecho = item.get("trecho")
+        if not isinstance(trecho, str) or not trecho.strip():
+            continue
+        span = _localizar(janela, trecho.strip())
+        if span is None:
+            logger.info("extrair: span proposto não é substring da janela; ignorado")
+            continue
+        ini, fim = aparar_fronteiras(janela, span[0], span[1])
+        if fim - ini < 3 or fim - ini > 300:
+            continue
+        if any(min(fim, f) - max(ini, i) > 0 for i, f in ocupados):
+            continue
+        familia = str(item.get("familia") or "").strip().lower()
+        if familia not in FAMILIAS or fim - ini > COMPRIMENTO_MAXIMO_SPAN.get(familia, 90):
+            continue
+        texto_span = janela[ini:fim]
+        campos: dict[str, Any] = {"inicio_rel": ini, "fim_rel": fim, "trecho": texto_span, "familia": familia,
+                                  "tipo": "lei" if familia == "dispositivo" else "jurisprudencia"}
+        tribunal = _limpar_tribunal(item.get("tribunal"))
+        if familia == "processo":
+            cadeia = _limpar_cadeia(item.get("classe_cadeia"))
+            digitos = _digitos_de(item.get("numero_digitos"))
+            sem_uf, uf_span = separar_uf(texto_span)
+            if not cadeia or len(digitos) < 3 or not _numero_presente(sem_uf, digitos):
+                continue
+            uf = _limpar_uf(item.get("uf"))
+            if uf and not re.search(r"(?<![A-Z])" + uf + r"(?![A-Z])", texto_span.upper()):
+                uf = None
+            campos.update(cadeia=cadeia, digitos=digitos, uf=uf or uf_span, tribunal=tribunal)
+        elif familia in ("sumula", "tema"):
+            numero = _digitos_de(item.get("numero_sumula") if familia == "sumula" else item.get("numero_digitos"))
+            if not numero or not _numero_presente(texto_span, numero):
+                continue
+            campos.update(numero=numero, tribunal=tribunal,
+                          vinculante=bool(item.get("vinculante")) if familia == "sumula" else False)
+        elif familia == "dispositivo":
+            artigo = _digitos_de(item.get("artigo"))
+            diploma = item.get("diploma")
+            if not artigo or not _numero_presente(texto_span, artigo) or not _literal_no_span(texto_span, diploma, 2):
+                continue
+            campos.update(artigo=artigo, diploma=str(diploma).strip())
+        else:  # vaga
+            ano = _digitos_de(item.get("ano"))
+            relator = item.get("relator")
+            tem_tribunal = bool(tribunal and (re.search(r"(?<![A-Z])" + tribunal + r"(?![A-Z])", texto_span.upper())
+                                              or _RE_TRIBUNAL_EXTENSO.search(texto_span)))
+            if not tem_tribunal or len(ano) != 4 or ano not in texto_span or not _RE_ANO.search(texto_span):
+                continue
+            if not isinstance(relator, str) or len(relator.split()) < 2 or not _literal_no_span(texto_span, relator, 4):
+                continue
+            campos.update(tribunal=tribunal, ano=ano, relator=" ".join(relator.split()))
+        ocupados.append((ini, fim))
+        aceitas.append(campos)
+    return aceitas
+
+
 # ---------------------------------------------------------------------------
 # Classe base
 # ---------------------------------------------------------------------------
@@ -512,7 +649,23 @@ class ArbitroBase:
                 entrada["inicio_rel"] = novo
         return Pedido("classificar", entrada, prompts.mensagens_classificar(trecho, ctx))
 
+    @staticmethod
+    def pedido_extrair(janela: str, ja_detectadas: list[dict[str, Any]] | None = None) -> Pedido:
+        janela = (janela or "")[:prompts.CONTEXTO_MAX * 2]
+        lista = [{"inicio": int(d["inicio"]), "fim": int(d["fim"]), "trecho": str(d.get("trecho") or "")[:120]}
+                 for d in (ja_detectadas or []) if isinstance(d, dict) and "inicio" in d and "fim" in d]
+        entrada = {"janela": janela, "ja_detectadas": lista}
+        return Pedido("extrair", entrada, prompts.mensagens_extrair(janela, lista))
+
     # -- operações públicas ---------------------------------------------------
+    def extrair_citacoes(self, janela: str, ja_detectadas: list[dict[str, Any]] | None = None) -> list[dict[str, Any]] | None:
+        """Citações validadas numa janela (ver :func:`validar_extracao`); ``None`` = abstenção."""
+        try:
+            return self.executar_lote("extrair", [(janela, ja_detectadas)])[0]
+        except Exception:
+            logger.exception("extrair_citacoes: erro inesperado; abstendo")
+            return None
+
     def normalizar_citacao(self, trecho: str, contexto: str) -> dict[str, Any] | None:
         try:
             return self.executar_lote("normalizar", [(trecho, contexto)])[0]
@@ -550,6 +703,8 @@ class ArbitroBase:
                 pedidos.append(self.pedido_normalizar(*args))
             elif operacao == "escolher":
                 pedidos.append(self.pedido_escolher(*args))
+            elif operacao == "extrair":
+                pedidos.append(self.pedido_extrair(*args))
             else:
                 pedidos.append(self.pedido_classificar(*args))
         brutos = self._responder_lote(pedidos)
@@ -565,6 +720,8 @@ class ArbitroBase:
                         resultado = validar_normalizacao(pedido.entrada["trecho"], obj)
                     elif pedido.operacao == "escolher":
                         resultado = validar_escolha(obj, len(pedido.entrada["candidatos"]))
+                    elif pedido.operacao == "extrair":
+                        resultado = validar_extracao(pedido.entrada["janela"], obj, pedido.entrada["ja_detectadas"])
                     else:
                         resultado = validar_classificacao(pedido.entrada["trecho"], pedido.entrada["contexto"],
                                                           obj, pedido.entrada.get("inicio_rel"))
@@ -597,5 +754,6 @@ def candidato_de_registro(registro: Any, cabecalho: str) -> dict[str, Any]:
 __all__ = [
     "Arbitro", "ArbitroBase", "Pedido", "ErroDependencia", "FAMILIAS_ARBITRO",
     "extrair_json", "digitos_compativeis", "validar_normalizacao", "validar_escolha",
-    "validar_classificacao", "aparar_fronteiras", "candidato_de_registro",
+    "validar_classificacao", "validar_extracao", "aparar_fronteiras", "candidato_de_registro",
+    "MAX_CITACOES_EXTRAIDAS", "COMPRIMENTO_MAXIMO_SPAN",
 ]

@@ -1,39 +1,52 @@
 {
  "meta": {
-  "brier_treino_antes": 0.00489689748369073,
-  "brier_treino_depois": 0.001743224675833927,
+  "brier_treino_antes": 0.004991193508728859,
+  "brier_treino_depois": 0.001752280975964661,
+  "caminhos_consolidados": [
+   "dispositivo",
+   "dispositivo:fora_da_tabela",
+   "dispositivo:na_tabela",
+   "processo",
+   "processo:0cand",
+   "processo:1cand",
+   "processo:1cand:cadeia_exata",
+   "sumula",
+   "sumula:na_tabela",
+   "vaga",
+   "vaga:incompleta"
+  ],
   "contagens": {
    "dispositivo": {
-    "acertos": 622.0,
-    "n": 622.0
+    "acertos": 575.0,
+    "n": 575.0
    },
    "dispositivo:diploma_fora_da_base": {
-    "acertos": 40.0,
-    "n": 40.0
+    "acertos": 33.0,
+    "n": 33.0
    },
    "dispositivo:fora_da_tabela": {
-    "acertos": 155.0,
-    "n": 155.0
+    "acertos": 136.0,
+    "n": 136.0
    },
    "dispositivo:fora_da_tabela:ocr": {
-    "acertos": 8.0,
-    "n": 8.0
+    "acertos": 7.0,
+    "n": 7.0
    },
    "dispositivo:na_tabela": {
-    "acertos": 427.0,
-    "n": 427.0
+    "acertos": 406.0,
+    "n": 406.0
    },
    "dispositivo:na_tabela:ocr": {
-    "acertos": 20.0,
-    "n": 20.0
+    "acertos": 19.0,
+    "n": 19.0
    },
    "processo": {
-    "acertos": 2288.0,
-    "n": 2288.0
+    "acertos": 2138.0,
+    "n": 2138.0
    },
    "processo:0cand": {
-    "acertos": 645.0,
-    "n": 645.0
+    "acertos": 588.0,
+    "n": 588.0
    },
    "processo:0cand:amplo": {
     "acertos": 5.0,
@@ -48,32 +61,32 @@
     "n": 30.0
    },
    "processo:1cand": {
-    "acertos": 1553.0,
-    "n": 1553.0
+    "acertos": 1461.0,
+    "n": 1461.0
    },
    "processo:1cand:cadeia_exata": {
-    "acertos": 1405.0,
-    "n": 1405.0
+    "acertos": 1327.0,
+    "n": 1327.0
    },
    "processo:1cand:classe_compativel": {
     "acertos": 13.0,
     "n": 13.0
    },
    "processo:1cand:classe_divergente": {
-    "acertos": 17.0,
-    "n": 17.0
+    "acertos": 11.0,
+    "n": 11.0
    },
    "processo:1cand:classe_principal": {
-    "acertos": 92.0,
-    "n": 92.0
+    "acertos": 86.0,
+    "n": 86.0
    },
    "processo:1cand:classe_principal:amplo": {
     "acertos": 12.0,
     "n": 12.0
    },
    "processo:1cand:registro": {
-    "acertos": 8.0,
-    "n": 8.0
+    "acertos": 6.0,
+    "n": 6.0
    },
    "processo:1cand:sem_classe": {
     "acertos": 2.0,
@@ -96,12 +109,12 @@
     "n": 25.0
    },
    "processo:multi": {
-    "acertos": 14.0,
-    "n": 14.0
-   },
-   "processo:multi:cadeia_exata": {
     "acertos": 13.0,
     "n": 13.0
+   },
+   "processo:multi:cadeia_exata": {
+    "acertos": 12.0,
+    "n": 12.0
    },
    "processo:multi:classe_principal": {
     "acertos": 1.0,
@@ -128,52 +141,48 @@
     "n": 1.0
    },
    "sumula": {
-    "acertos": 471.0,
-    "n": 471.0
+    "acertos": 477.0,
+    "n": 477.0
    },
    "sumula:fora_da_tabela": {
-    "acertos": 100.0,
-    "n": 100.0
+    "acertos": 97.0,
+    "n": 97.0
    },
    "sumula:fora_da_tabela:ocr": {
     "acertos": 12.0,
     "n": 12.0
    },
    "sumula:fora_da_tabela:tribunal_divergente": {
-    "acertos": 14.0,
-    "n": 14.0
-   },
-   "sumula:fora_da_tabela:tribunal_divergente:ocr": {
-    "acertos": 1.0,
-    "n": 1.0
+    "acertos": 13.0,
+    "n": 13.0
    },
    "sumula:na_tabela": {
-    "acertos": 371.0,
-    "n": 371.0
+    "acertos": 380.0,
+    "n": 380.0
    },
    "sumula:na_tabela:ocr": {
     "acertos": 6.0,
     "n": 6.0
    },
    "sumula:na_tabela:tribunal_implicito": {
-    "acertos": 50.0,
-    "n": 50.0
+    "acertos": 47.0,
+    "n": 47.0
    },
    "sumula:na_tabela:tribunal_implicito:ocr": {
-    "acertos": 3.0,
-    "n": 3.0
+    "acertos": 2.0,
+    "n": 2.0
    },
    "tema": {
-    "acertos": 16.0,
-    "n": 22.0
+    "acertos": 15.0,
+    "n": 21.0
    },
    "tema:inventada": {
-    "acertos": 16.0,
-    "n": 22.0
+    "acertos": 15.0,
+    "n": 21.0
    },
    "tema:inventada:repercussao": {
-    "acertos": 16.0,
-    "n": 16.0
+    "acertos": 15.0,
+    "n": 15.0
    },
    "tema:inventada:repetitivo": {
     "acertos": 0.0,
@@ -188,12 +197,12 @@
     "n": 3.0
    },
    "vaga": {
-    "acertos": 889.0,
-    "n": 889.0
+    "acertos": 856.0,
+    "n": 856.0
    },
    "vaga:incompleta": {
-    "acertos": 889.0,
-    "n": 889.0
+    "acertos": 856.0,
+    "n": 856.0
    },
    "vaga:incompleta:amplo": {
     "acertos": 16.0,
@@ -215,14 +224,34 @@
     "nome": "rastro:cal_dev/rastro.jsonl"
    },
    {
-    "acertos": 61,
-    "n": 61,
-    "nome": "rastro:cal_cabecalhos/rastro.jsonl"
+    "acertos": 280,
+    "n": 280,
+    "nome": "rastro:cal_n2_dev/rastro.jsonl"
+   },
+   {
+    "acertos": 424,
+    "n": 424,
+    "nome": "rastro:cal_n2_ag_treino/rastro.jsonl"
+   },
+   {
+    "acertos": 107,
+    "n": 107,
+    "nome": "rastro:cal_siglas/rastro.jsonl"
    },
    {
     "acertos": 96,
     "n": 96,
     "nome": "rastro:cal_conectores/rastro.jsonl"
+   },
+   {
+    "acertos": 96,
+    "n": 96,
+    "nome": "rastro:cal_ruido_n2/rastro.jsonl"
+   },
+   {
+    "acertos": 95,
+    "n": 95,
+    "nome": "rastro:cal_vagas/rastro.jsonl"
    },
    {
     "acertos": 66,
@@ -235,6 +264,11 @@
     "nome": "rastro:cal_frases/rastro.jsonl"
    },
    {
+    "acertos": 61,
+    "n": 61,
+    "nome": "rastro:cal_cabecalhos/rastro.jsonl"
+   },
+   {
     "acertos": 144,
     "n": 144,
     "nome": "rastro:cal_normativos/rastro.jsonl"
@@ -245,29 +279,9 @@
     "nome": "rastro:cal_r2_chave_parcial/rastro.jsonl"
    },
    {
-    "acertos": 93,
-    "n": 93,
-    "nome": "rastro:cal_r2_duplicatas/rastro.jsonl"
-   },
-   {
-    "acertos": 96,
-    "n": 96,
-    "nome": "rastro:cal_r2_fora_da_base/rastro.jsonl"
-   },
-   {
-    "acertos": 156,
-    "n": 156,
-    "nome": "rastro:cal_r2_listas/rastro.jsonl"
-   },
-   {
     "acertos": 120,
     "n": 120,
     "nome": "rastro:cal_r2_normativos_ruido/rastro.jsonl"
-   },
-   {
-    "acertos": 128,
-    "n": 128,
-    "nome": "rastro:cal_r2_processos_forma/rastro.jsonl"
    },
    {
     "acertos": 108,
@@ -275,19 +289,29 @@
     "nome": "rastro:cal_r2_vagas_ordem/rastro.jsonl"
    },
    {
-    "acertos": 60,
-    "n": 60,
-    "nome": "rastro:cal_r3_atos_normativos/rastro.jsonl"
+    "acertos": 128,
+    "n": 128,
+    "nome": "rastro:cal_r2_processos_forma/rastro.jsonl"
+   },
+   {
+    "acertos": 93,
+    "n": 93,
+    "nome": "rastro:cal_r2_duplicatas/rastro.jsonl"
+   },
+   {
+    "acertos": 156,
+    "n": 156,
+    "nome": "rastro:cal_r2_listas/rastro.jsonl"
    },
    {
     "acertos": 96,
     "n": 96,
-    "nome": "rastro:cal_r3_caps_corpo/rastro.jsonl"
+    "nome": "rastro:cal_r2_fora_da_base/rastro.jsonl"
    },
    {
-    "acertos": 104,
-    "n": 104,
-    "nome": "rastro:cal_r3_dispositivos_forma/rastro.jsonl"
+    "acertos": 60,
+    "n": 60,
+    "nome": "rastro:cal_r3_atos_normativos/rastro.jsonl"
    },
    {
     "acertos": 132,
@@ -295,9 +319,9 @@
     "nome": "rastro:cal_r3_enumeracoes/rastro.jsonl"
    },
    {
-    "acertos": 108,
-    "n": 108,
-    "nome": "rastro:cal_r3_prefixo_tribunal/rastro.jsonl"
+    "acertos": 96,
+    "n": 96,
+    "nome": "rastro:cal_r3_vagas_redacao/rastro.jsonl"
    },
    {
     "acertos": 104,
@@ -305,9 +329,29 @@
     "nome": "rastro:cal_r3_sumulas_forma/rastro.jsonl"
    },
    {
+    "acertos": 104,
+    "n": 104,
+    "nome": "rastro:cal_r3_dispositivos_forma/rastro.jsonl"
+   },
+   {
     "acertos": 96,
     "n": 96,
-    "nome": "rastro:cal_r3_vagas_redacao/rastro.jsonl"
+    "nome": "rastro:cal_r3_caps_corpo/rastro.jsonl"
+   },
+   {
+    "acertos": 108,
+    "n": 108,
+    "nome": "rastro:cal_r3_prefixo_tribunal/rastro.jsonl"
+   },
+   {
+    "acertos": 84,
+    "n": 84,
+    "nome": "rastro:cal_r4_vagas_relator_antes/rastro.jsonl"
+   },
+   {
+    "acertos": 72,
+    "n": 72,
+    "nome": "rastro:cal_r4_ocr_duplo/rastro.jsonl"
    },
    {
     "acertos": 60,
@@ -320,24 +364,14 @@
     "nome": "rastro:cal_r4_negativas_vizinhas/rastro.jsonl"
    },
    {
-    "acertos": 72,
-    "n": 72,
-    "nome": "rastro:cal_r4_ocr_duplo/rastro.jsonl"
+    "acertos": 96,
+    "n": 96,
+    "nome": "rastro:cal_r5_vagas_lavra_final/rastro.jsonl"
    },
    {
-    "acertos": 84,
-    "n": 84,
-    "nome": "rastro:cal_r4_vagas_relator_antes/rastro.jsonl"
-   },
-   {
-    "acertos": 60,
-    "n": 66,
-    "nome": "rastro:cal_r5_distratores_orgaos/rastro.jsonl"
-   },
-   {
-    "acertos": 86,
-    "n": 86,
-    "nome": "rastro:cal_r5_layouts/rastro.jsonl"
+    "acertos": 115,
+    "n": 115,
+    "nome": "rastro:cal_r5_processos_plural_nos/rastro.jsonl"
    },
    {
     "acertos": 108,
@@ -350,53 +384,43 @@
     "nome": "rastro:cal_r5_processos_ocr_combo/rastro.jsonl"
    },
    {
-    "acertos": 115,
-    "n": 115,
-    "nome": "rastro:cal_r5_processos_plural_nos/rastro.jsonl"
+    "acertos": 60,
+    "n": 66,
+    "nome": "rastro:cal_r5_distratores_orgaos/rastro.jsonl"
    },
    {
-    "acertos": 96,
-    "n": 96,
-    "nome": "rastro:cal_r5_vagas_lavra_final/rastro.jsonl"
+    "acertos": 86,
+    "n": 86,
+    "nome": "rastro:cal_r5_layouts/rastro.jsonl"
    },
    {
-    "acertos": 96,
-    "n": 96,
-    "nome": "rastro:cal_ruido_n2/rastro.jsonl"
+    "acertos": 39,
+    "n": 39,
+    "nome": "rastro:cal_r6_extrator_formas/rastro.jsonl"
    },
    {
-    "acertos": 107,
-    "n": 107,
-    "nome": "rastro:cal_siglas/rastro.jsonl"
-   },
-   {
-    "acertos": 95,
-    "n": 95,
-    "nome": "rastro:cal_vagas/rastro.jsonl"
-   },
-   {
-    "acertos": 424,
-    "n": 424,
-    "nome": "rastro:cal_n2_ag_treino/rastro.jsonl"
-   },
-   {
-    "acertos": 280,
-    "n": 280,
-    "nome": "rastro:cal_n2_dev/rastro.jsonl"
-   },
-   {
-    "acertos": 288,
-    "n": 288,
-    "nome": "rastro:cal_n3_ood/rastro.jsonl"
+    "acertos": 24,
+    "n": 24,
+    "nome": "rastro:cal_r6_extrator_distratores/rastro.jsonl"
    }
   ],
-  "gerado_em": "2026-09-20T02:07:04+00:00",
+  "gerado_em": "2026-09-20T03:49:16+00:00",
+  "n_minimo_consolidado": 100,
   "peso_prior": 4.0,
   "piso": 0.05,
   "seed": 0,
   "suavizacao": "(a + k*p0)/(n + k): Laplace generalizado, p0 = prior hierárquico da tabela inicial, k = peso_prior",
   "teto": 0.98,
-  "validacao": []
+  "teto_consolidado": 0.998,
+  "validacao": [
+   {
+    "acertos": 288,
+    "brier_antes": 0.002693750000000004,
+    "brier_depois": 0.0013629108126721804,
+    "n": 288,
+    "nome": "validacao-rastro:cal_n3_ood/rastro.jsonl"
+   }
+  ]
  },
  "tabela": {
   "dispositivo": 0.998,
@@ -404,11 +428,21 @@
   "dispositivo:diploma_fora_da_base": 0.98,
   "dispositivo:fora_da_tabela": 0.998,
   "dispositivo:fora_da_tabela:diploma_outro": 0.85,
-  "dispositivo:fora_da_tabela:ocr": 0.9667,
+  "dispositivo:fora_da_tabela:ocr": 0.9636,
   "dispositivo:na_tabela": 0.998,
   "dispositivo:na_tabela:ocr": 0.98,
   "dispositivo:sem_artigo": 0.5,
   "dispositivo:sem_diploma": 0.5,
+  "llm": 0.7,
+  "llm:extrator": 0.7,
+  "llm:extrator:dispositivo": 0.8,
+  "llm:extrator:processo": 0.75,
+  "llm:extrator:processo:0cand": 0.7,
+  "llm:extrator:processo:1cand": 0.85,
+  "llm:extrator:processo:multi": 0.65,
+  "llm:extrator:sumula": 0.8,
+  "llm:extrator:tema": 0.7,
+  "llm:extrator:vaga": 0.75,
   "processo": 0.998,
   "processo:0cand": 0.998,
   "processo:0cand:amplo": 0.9778,
@@ -423,7 +457,7 @@
   "processo:1cand:classe_principal": 0.98,
   "processo:1cand:classe_principal:amplo": 0.98,
   "processo:1cand:curto_classe_divergente": 0.6,
-  "processo:1cand:registro": 0.9667,
+  "processo:1cand:registro": 0.96,
   "processo:1cand:sem_classe": 0.9,
   "processo:1cand:sem_classe:amplo": 0.9,
   "processo:1cand:tribunal_incompativel": 0.7,
@@ -435,7 +469,7 @@
   "processo:llm_nao_citacao": 0.5,
   "processo:llm_normalizou": 0.7,
   "processo:llm_normalizou:0cand": 0.75,
-  "processo:multi": 0.9556,
+  "processo:multi": 0.9529,
   "processo:multi:cadeia_exata": 0.98,
   "processo:multi:classe_compativel": 0.8,
   "processo:multi:classe_principal": 0.88,
@@ -452,11 +486,10 @@
   "processo:ocr_reparado:multi": 0.84,
   "processo:ocr_reparado:multi:cadeia_exata": 0.96,
   "sumula": 0.998,
-  "sumula:fora_da_tabela": 0.998,
+  "sumula:fora_da_tabela": 0.98,
   "sumula:fora_da_tabela:ocr": 0.975,
   "sumula:fora_da_tabela:sem_tribunal": 0.85,
   "sumula:fora_da_tabela:tribunal_divergente": 0.98,
-  "sumula:fora_da_tabela:tribunal_divergente:ocr": 0.96,
   "sumula:fora_da_tabela:vinculante_tribunal_divergente": 0.7,
   "sumula:na_tabela": 0.998,
   "sumula:na_tabela:ocr": 0.96,
@@ -464,8 +497,8 @@
   "sumula:na_tabela:tribunal_implicito": 0.98,
   "sumula:na_tabela:tribunal_implicito:ocr": 0.98,
   "sumula:sem_numero": 0.5,
-  "tema": 0.7538,
-  "tema:inventada": 0.7538,
+  "tema": 0.744,
+  "tema:inventada": 0.744,
   "tema:inventada:repercussao": 0.98,
   "tema:inventada:repetitivo": 0.4857,
   "tema:inventada:solto": 0.3429,
