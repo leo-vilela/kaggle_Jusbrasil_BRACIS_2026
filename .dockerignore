@@ -4,6 +4,8 @@ dados/*
 modelos/
 cache_llm/
 saida/
+saida_*/
+saida-*/
 *.zip
 *.csv
 relatorio.json

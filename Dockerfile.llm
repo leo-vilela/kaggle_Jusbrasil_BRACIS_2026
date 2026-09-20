@@ -27,9 +27,9 @@
 # Blackwell exige CUDA >= 12.8; L4/A10/A100, sm_89/sm_86/sm_80, também cobertas). A família Qwen3.5
 # (Qwen3_5ForConditionalGeneration) exige transformers >= 5 e a quantização NF4 exige bitsandbytes —
 # pinos em requirements-llm.txt. Até a v1.2.5 a base era 2.7.1 com transformers 4.51.3 (Qwen2.5 bf16).
-# Fixe a base por digest antes do build de referência (docker pull … && docker inspect
-# --format='{{index .RepoDigests 0}}'): a tag muda com cada patch da imagem (R3b-07).
-FROM pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime
+# Base fixada por digest (R3b-07; conferido no Docker Hub em 20/09/2026: tag publicada em 2026-03-23,
+# linux/amd64, 3,97 GB comprimidos) — a tag sozinha muda com cada patch da imagem.
+FROM pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime@sha256:eee11b3b3872a8c838e35ef48f08b2d5def2080902c7f666831310ca1a0ef2be
 
 # Revisão fixa dos pesos (MANIFESTO_MODELO.md / modelos/revisao_fixa.env); pode ser trocada por
 # --build-arg, mas nunca esvaziada (o build falha).

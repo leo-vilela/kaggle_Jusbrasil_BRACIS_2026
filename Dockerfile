@@ -6,9 +6,9 @@
 #     -v <txt>:/data/in:ro -v <saida>:/data/out \
 #     -v <db>:/data/base/desafio1_bracis.db:ro \
 #     <imagem> --input /data/in --output /data/out
-# Fixe por digest antes do build de referência (docker inspect --format='{{index .RepoDigests 0}}'):
-# a tag slim muda com cada patch do 3.12/Debian (R3b-07).
-FROM python:3.12-slim
+# Base fixada por digest (R3b-07; manifesto multi-arquitetura do Docker Hub em 20/09/2026, tag publicada em
+# 2026-09-19): a tag slim muda com cada patch do 3.12/Debian.
+FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9
 
 ENV PYTHONHASHSEED=0 \
     PYTHONDONTWRITEBYTECODE=1 \

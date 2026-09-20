@@ -272,7 +272,10 @@ cobre tudo); a diferença aparece em formas que o regex não cobre — o que o c
 ### 4. Docker (o comando exato da organização) e verificação de reprodutibilidade
 ```bash
 make docker && make docker-rodar          # CPU, offline; compare saida/ com a do passo 2
-make docker-digests                       # fixa as imagens-base por digest (exige rede)
+make docker-llm                           # imagem com o árbitro (Dockerfile.llm; bases fixadas por digest)
+bash scripts/docker_llm.sh [gpu]          # prova da imagem do árbitro: constrói, reproduz o dev DENTRO do container
+                                          # só do cache (sem GPU) e, com `gpu`, carrega o Qwen3.5-9B NF4 na GPU;
+                                          # compara os CSVs com saida_llm_q35/submission_llm.csv (Windows: scripts\docker_llm.cmd)
 ```
 
 ### 5. Kaggle
