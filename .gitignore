@@ -2,7 +2,11 @@
 dados/*
 !dados/.gitkeep
 !dados/calibracao.json
+# qualquer pasta de saída do pipeline (SAIDA=... também): os JSONs contêm trechos dos documentos do desafio
 saida/
+saida_*/
+saida-*/
+rastro*.jsonl
 *.zip
 __pycache__/
 *.pyc
@@ -12,6 +16,10 @@ modelos/*
 !modelos/revisao_fixa.env
 cache_llm/
 
-# artefatos locais
+# artefatos locais (relatórios e submissões contêm trechos/ids do gabarito)
 relatorio.json
+relatorio_*.json
+relatorio-*.json
 submission.csv
+submission_*.csv
+submission-*.csv

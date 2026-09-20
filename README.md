@@ -53,6 +53,23 @@ Decisões registradas em `docs/decisoes/`; especificações medidas nos dados em
 Requisitos: Python ≥ 3.10 (núcleo só com biblioteca padrão); `numpy` e `pandas` **apenas** para a
 avaliação local com o script oficial (`pip install -r requirements.txt`). `make` opcional.
 
+**Em um comando** (com `dados/` já preenchido pelo passo 1 abaixo):
+
+```bash
+make reproduzir REFERENCIA=../submission_v1_1.csv   # ou: python scripts/reproduzir.py --referencia ../submission_v1_1.csv
+```
+
+`scripts/reproduzir.py` confere os SHA-256 dos dados oficiais, gera os derivados que faltarem
+(catálogo e sintéticos, seeds fixas), roda a suíte inteira (falha se algum teste ficar `skipped`
+com os dados presentes), a verificação de vazamento, o pipeline **duas vezes** (a segunda sem
+`dados/indice.json`, reconstruindo o índice em memória) exigindo saídas byte a byte idênticas,
+a métrica oficial e o conversor oficial; com `--referencia`, compara o CSV gerado byte a byte com
+o entregue. Código de saída 0 só com tudo conferido (3 = métrica pulada por falta de
+`numpy`/`pandas`; 1 = alguma etapa falhou). Só biblioteca padrão e sem `make`; validado em
+Ubuntu 22.04 (Python 3.10) e no contêiner (Python 3.11) — no Windows, use o WSL2.
+
+Passo a passo equivalente:
+
 ```bash
 # 1. dados: zip da aba Data do Kaggle → dados/ (SHA-256 conferidos; offsets do gabarito validados)
 make dados ZIP=~/Downloads/desafio-jusbrasil-bracis-2026.zip

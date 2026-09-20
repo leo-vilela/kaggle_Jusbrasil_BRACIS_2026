@@ -11,6 +11,7 @@ ARBITRO    ?= nenhum
 RASTRO     ?= $(SAIDA)/rastro.jsonl
 RELATORIO  ?= relatorio.json
 SUBMISSAO  ?= submission.csv
+REFERENCIA ?=
 IMAGEM     ?= caca-alucinacao:latest
 IMAGEM_LLM ?= caca-alucinacao:llm
 # a imagem roda como root (ver Dockerfile); para um usuário sem privilégios: make docker-rodar DOCKER_USER='--user $(id -u):$(id -g)'
@@ -18,11 +19,14 @@ DOCKER_USER ?=
 export PYTHONPATH := src
 export PYTHONHASHSEED := 0
 
-.PHONY: ajuda dados catalogo indice testar lint vazamento vazamento-historico rodar avaliar submissao sinteticos adversarial calibrar docker docker-rodar docker-digests docker-llm limpar
+.PHONY: ajuda reproduzir dados catalogo indice testar lint vazamento vazamento-historico rodar avaliar submissao sinteticos adversarial calibrar docker docker-rodar docker-digests docker-llm limpar
 
 ajuda:
-	@echo "alvos: dados indice testar lint rodar avaliar submissao sinteticos adversarial calibrar docker docker-rodar docker-llm limpar"
+	@echo "alvos: reproduzir dados indice testar lint rodar avaliar submissao sinteticos adversarial calibrar docker docker-rodar docker-llm limpar"
 	@echo "ex.: make dados ZIP=~/Downloads/desafio-jusbrasil-bracis-2026.zip && make indice && make rodar && make avaliar"
+
+reproduzir:       ## tudo de uma vez: SHA-256 dos dados, derivados, testes, vazamento, pipeline 2x (byte a byte), métrica oficial, CSV
+	$(PYTHON) scripts/reproduzir.py $(if $(REFERENCIA),--referencia $(REFERENCIA),)
 
 dados:            ## extrai o zip da aba Data para dados/, confere SHA-256 e offsets do gabarito; gera o catálogo local
 	$(PYTHON) scripts/preparar_dados.py --zip $(ZIP) --dados dados
