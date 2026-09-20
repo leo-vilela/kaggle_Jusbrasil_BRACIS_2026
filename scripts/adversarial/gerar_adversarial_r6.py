@@ -47,8 +47,12 @@ EXTENSO = {"RESP": "recurso especial", "ARESP": "agravo em recurso especial", "R
            "RCL": "reclamação", "HC": "habeas corpus", "RMS": "recurso em mandado de segurança"}
 QUEBRAVEL = {"RESP": ("Re curso Especial", "Recurso Espe-\ncial"), "RCL": ("Recla-\nmação", "Recla mação"),
              "RE": ("Recurso Extraordi-\nnário", "Re curso Extraordinário"), "HC": ("Habeas Cor-\npus", "Ha beas Corpus")}
-UF_EXT = {"SP": "São Paulo", "RJ": "Rio de Janeiro", "MG": "Minas Gerais", "PR": "Paraná", "RS": "Rio Grande do Sul",
-          "BA": "Bahia", "DF": "Distrito Federal", "SC": "Santa Catarina", "PE": "Pernambuco"}
+UF_EXT = {"AC": "Acre", "AL": "Alagoas", "AP": "Amapá", "AM": "Amazonas", "BA": "Bahia", "CE": "Ceará",
+          "DF": "Distrito Federal", "ES": "Espírito Santo", "GO": "Goiás", "MA": "Maranhão", "MT": "Mato Grosso",
+          "MS": "Mato Grosso do Sul", "MG": "Minas Gerais", "PA": "Pará", "PB": "Paraíba", "PR": "Paraná",
+          "PE": "Pernambuco", "PI": "Piauí", "RJ": "Rio de Janeiro", "RN": "Rio Grande do Norte",
+          "RS": "Rio Grande do Sul", "RO": "Rondônia", "RR": "Roraima", "SC": "Santa Catarina", "SP": "São Paulo",
+          "SE": "Sergipe", "TO": "Tocantins"}  # as 27: o estado escrito tem de ser o do registro (medição 2, 20/09)
 SUMULA_OCR = ["Sún1ula", "Sumu1a", "Súmu1a", "Sún1u1a"]
 
 
@@ -145,7 +149,7 @@ def conjunto_extrator_formas(am: Amostra, rng: random.Random) -> list[Doc]:
             uf = i.get("uf")
             frase_com_citacao(doc, trecho, "jurisprudencia", "real", i["reg"]["id_canonico"], rng, "de número [extrator]",
                               sem_ponto=True)
-            doc.add((f", oriundo de {UF_EXT.get(uf, 'São Paulo')}" if uf else "") + ". ")
+            doc.add((f", oriundo de {UF_EXT[uf]}" if uf in UF_EXT else "") + ". ")
             enchimento(doc, rng, 1)
         j = _inventado(am, "STJ")
         if j and j["cadeia"][0] in EXTENSO:

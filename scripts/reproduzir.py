@@ -3,6 +3,8 @@
     python scripts/reproduzir.py                                  # tudo, em saida_reproducao/
     python scripts/reproduzir.py --referencia submission_v1_1.csv  # e compara o CSV gerado com um entregue
     python scripts/reproduzir.py --sem-testes                      # só pipeline + métrica + CSV
+    python scripts/reproduzir.py --arbitro transformers --cache-llm saida_llm/cache_llm.jsonl \
+        --referencia submission_v1_2.csv                           # com o árbitro LLM, SEM GPU (só o cache)
 
 Etapas, na ordem, cada uma com veredito próprio:
 
@@ -15,6 +17,9 @@ Etapas, na ordem, cada uma com veredito próprio:
 4. **vazamento**: nenhum trecho/número/nome do gabarito em arquivo versionado ou novo;
 5. **pipeline 2×**: o CLI roda duas vezes (a segunda sem ``dados/indice.json``, forçando a
    reconstrução do índice em memória) e as saídas têm de ser byte a byte idênticas (JSONs e rastro);
+   com ``--arbitro transformers --cache-llm <jsonl>`` o árbitro LLM roda **só do cache** exportado da
+   execução de referência (``CACA_LLM_SOMENTE_CACHE=1``; nem torch é carregado): zero chamadas ao
+   modelo, mesma saída em qualquer máquina — é assim que a submissão com o Qwen ligado se reproduz;
 6. **métrica oficial**: ``scripts/avaliar.py`` (que importa o ``kaggle_metric.py`` da organização);
 7. **submissão**: ``json_to_submission.py`` oficial + validação; SHA-256 do CSV; com ``--referencia``,
    comparação byte a byte.
@@ -86,6 +91,8 @@ def arvore(pasta: Path) -> list[Path]:
 def comparar_pastas(a: Path, b: Path) -> list[str]:
     """Nomes que diferem (ausentes de um lado ou com bytes diferentes)."""
     fa, fb = set(arvore(a)), set(arvore(b))
+    # o log de estatísticas do árbitro traz o caminho do cache (um por execução): não é saída
+    fa, fb = {x for x in fa if x.name != "arbitro_estatisticas.log"}, {x for x in fb if x.name != "arbitro_estatisticas.log"}
     diferentes = sorted(str(p) for p in fa ^ fb)
     for rel in sorted(fa & fb):
         if not filecmp.cmp(a / rel, b / rel, shallow=False):
@@ -111,6 +118,35 @@ def pasta_limpa(pasta: Path) -> Path:
     raise RuntimeError(f"não foi possível criar uma pasta de saída limpa a partir de {pasta}")
 
 
+def ambiente_arbitro(arbitro: str, cache_llm: Path | None) -> dict[str, str] | None:
+    """Variáveis para o pipeline rodar o árbitro **só do cache** (``{}`` sem árbitro; ``None`` se o
+    JSONL não existe): modelo e revisão fixa de ``modelos/revisao_fixa.env`` (a chave do cache inclui
+    os dois), ``CACA_LLM_SOMENTE_CACHE=1`` e ``CACA_LLM_CACHE_IMPORTAR=<jsonl>``."""
+    if arbitro == "nenhum":
+        return {}
+    env: dict[str, str] = {}
+    fixo = RAIZ / "modelos" / "revisao_fixa.env"
+    if fixo.exists():
+        for linha in fixo.read_text(encoding="utf-8").splitlines():
+            m = re.match(r'\s*export\s+(CACA_MODELO|CACA_MODELO_REVISAO)="([^"]*)"', linha)
+            if m and not os.environ.get(m.group(1)):
+                env[m.group(1)] = m.group(2)
+    if cache_llm is not None:
+        if not cache_llm.exists():
+            return None
+        env["CACA_LLM_SOMENTE_CACHE"] = "1"
+        env["CACA_LLM_CACHE_IMPORTAR"] = str(cache_llm.resolve())
+    return env
+
+
+def estatisticas_arbitro(pasta: Path) -> dict:
+    """``arbitro_estatisticas.log`` gravado pelo CLI (``{}`` se ausente ou ilegível)."""
+    try:
+        return json.loads((pasta / "arbitro_estatisticas.log").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--saida", type=Path, default=RAIZ / "saida_reproducao",
@@ -120,7 +156,13 @@ def main() -> int:
     ap.add_argument("--sem-testes", action="store_true", help="pula a suíte unittest e a verificação de vazamento")
     ap.add_argument("--entrada", type=Path, default=DADOS / "txt", help="pasta dos .txt (padrão: os 26 do dev)")
     ap.add_argument("--calibracao", type=Path, default=DADOS / "calibracao.json")
+    ap.add_argument("--arbitro", default="nenhum", choices=("nenhum", "transformers", "vllm", "mock"),
+                    help="árbitro LLM do pipeline (padrão: nenhum = só o núcleo)")
+    ap.add_argument("--cache-llm", type=Path, default=None,
+                    help="JSONL exportado do cache do árbitro (saida_llm/cache_llm.jsonl): o árbitro responde só dele, sem GPU")
     args = ap.parse_args()
+    if args.arbitro not in ("nenhum", "mock") and args.cache_llm is None:
+        ap.error("--arbitro transformers/vllm exige --cache-llm <jsonl> (a reprodução nunca chama o modelo)")
     for fluxo in (sys.stdout, sys.stderr):  # consoles sem UTF-8 (Windows cp1252) não derrubam o resumo
         if hasattr(fluxo, "reconfigure"):
             fluxo.reconfigure(encoding="utf-8", errors="replace")
@@ -191,15 +233,20 @@ def main() -> int:
     # 5. pipeline 2× --------------------------------------------------------------------------
     args.saida = pasta_limpa(args.saida)
     base = [py, "-m", "caca_alucinacao.cli", "--input", str(args.entrada), "--db", str(DADOS / "desafio1_bracis.db"),
-            "--arbitro", "nenhum", "--calibracao", str(args.calibracao)]
+            "--arbitro", args.arbitro, "--calibracao", str(args.calibracao)]
     a, b = args.saida / "execucao_a", args.saida / "execucao_b"
     indice = DADOS / "indice.json"
     cmd_a = base + ["--output", str(a), "--rastro", str(a / "rastro.jsonl")] + (["--indice", str(indice)] if indice.exists() else [])
     cmd_b = base + ["--output", str(b), "--rastro", str(b / "rastro.jsonl")]  # sem --indice: reconstrói em memória
+    env_llm = ambiente_arbitro(args.arbitro, args.cache_llm)
+    if env_llm is None:
+        et.falha("5 pipeline", f"cache do árbitro ausente: {args.cache_llm}")
+        return imprimir(et, t0)
     tempos = []
     for cmd, pasta in ((cmd_a, a), (cmd_b, b)):
         t = time.time()
-        r = rodar(cmd)
+        # cada execução com o seu SQLite (importado do mesmo JSONL): nada passa de A para B
+        r = rodar(cmd, env=dict(env_llm, CACA_CACHE_LLM=str(args.saida / f"cache_llm_{pasta.name}.sqlite")) if env_llm else None)
         tempos.append(time.time() - t)
         if r.returncode != 0:
             et.falha("5 pipeline", f"CLI falhou (código {r.returncode}):\n" + (r.stdout + r.stderr)[-1500:])
@@ -212,8 +259,18 @@ def main() -> int:
     elif dif:
         et.falha("5 pipeline", "execuções A e B diferem em: " + ", ".join(dif[:10]))
     else:
-        et.ok("5 pipeline", f"{n_json} JSONs; A (com índice) == B (índice em memória), byte a byte, rastro incluído; "
-                            f"{tempos[0]:.1f}s / {tempos[1]:.1f}s")
+        detalhe = (f"{n_json} JSONs; A (com índice) == B (índice em memória), byte a byte, rastro incluído; "
+                   f"{tempos[0]:.1f}s / {tempos[1]:.1f}s")
+        if args.arbitro != "nenhum":
+            stats = estatisticas_arbitro(a)
+            chamadas = stats.get("chamadas_ao_modelo")
+            detalhe += (f"\n      árbitro {args.arbitro}: {stats.get('modelo')}@{str(stats.get('revisao') or '')[:12]} "
+                        f"prompt {stats.get('prompt_versao')}; chamadas ao modelo = {chamadas}; "
+                        f"abstenções = {stats.get('abstencoes')}; cache: {stats.get('cache', {}).get('acertos')} acertos")
+            if args.cache_llm is not None and chamadas not in (0, None):
+                et.falha("5 pipeline", detalhe + "\n      o árbitro chamou o modelo: a reprodução tem de vir só do cache")
+                return imprimir(et, t0)
+        et.ok("5 pipeline", detalhe)
 
     # 6. métrica oficial -----------------------------------------------------------------------
     relatorio = args.saida / "relatorio.json"

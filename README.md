@@ -1,6 +1,6 @@
 # Caça-Alucinações — verificador de citações jurídicas (Jusbrasil × BRACIS 2026)
 
-> Estado (20/09/2026, v1.2.1): **todos os módulos prontos e testados** (589 testes, `make testar`;
+> Estado (20/09/2026, v1.2.2): **todos os módulos prontos e testados** (591 testes, `make testar`;
 > reprodução em um comando, `make reproduzir`). Núcleo determinístico só com biblioteca padrão;
 > score no conjunto de desenvolvimento **1,10000** (1,0999960; τ = 0), nos sintéticos n2/n3
 > 1,10000 / 1,09986 e nos 34 conjuntos adversariais das revisões entre 1,027 e 1,10000 (todos com
@@ -9,10 +9,13 @@
 > calibrar-completo`, ADR 0007). O árbitro LLM (`llm/`, Qwen2.5-7B-Instruct, pesos originais,
 > revisão fixa) segue o **padrão ouro** (ADR 0003): extrai e desambigua com toda saída validada
 > contra o texto e a base, nunca classifica; `Dockerfile.llm` roda com ele **ligado**, e
-> `make comparar-arbitro` mede núcleo × árbitro com veredito automático. Medição 1 com o Qwen real
-> na RTX 5090 (20/09): dev idêntico, τ = 0 em todos os conjuntos, `r6_extrator_formas` +0,418, mas
-> FPs em distratores → veredito MANTER DESLIGADO; a v1.2.1 fecha essas brechas na validação (ADR
-> 0003, "Medição 1") e a medição 2 decide. A submissão de referência continua sendo a do núcleo.
+> `make comparar-arbitro` mede núcleo × árbitro com veredito automático. Medido com o Qwen real na
+> RTX 5090 (20/09, duas rodadas; ADR 0003 "Medição 1/2"): a v1.2.1 fechou as brechas da rodada 1 e a
+> rodada 2 deu **VEREDITO: LIGAR** — 8 de 9 conjuntos byte a byte idênticos ao núcleo (dev incluído),
+> τ = 0 em todos, 0 emissões nos distratores e `r6_extrator_formas` 0,597 → 1,072 (+0,475; 67
+> extrações, 66 certas), a ≈ 7–24 s/doc. A submissão com o árbitro é **idêntica** à do núcleo no dev
+> (mesmo SHA-256) e se reproduz sem GPU: `make reproduzir ARBITRO=transformers
+> CACHE_LLM=saida_llm/cache_llm.jsonl` (zero chamadas ao modelo, 5 s).
 
 ## O desafio em 5 linhas
 
@@ -184,7 +187,7 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_
 ### 2. Núcleo determinístico (o que gera a submissão de referência)
 ```bash
 make dados ZIP=../arquivos/desafio-jusbrasil-bracis-2026.zip   # ou pule se dados/ já estiver completo
-make indice && make sinteticos && make testar                  # 589 testes
+make indice && make sinteticos && make testar                  # 591 testes
 make rodar && make avaliar                                     # 1,10000 esperado no dev
 make submissao                                                 # submission.csv + submission_jsons.zip
 ```
@@ -213,10 +216,25 @@ por `generate`, cache em disco das respostas.
 conjuntos que forçam os gatilhos (`r6_extrator_formas`, `r6_extrator_distratores`) têm de melhorar
 sem falsos positivos, e o dev tem de ficar idêntico ou melhor. Com o `mock` (heurística, não o
 modelo): 37/38 conjuntos byte a byte iguais ao núcleo e `r6_extrator_formas` +0,500 com τ = 0.
+**Com o Qwen real** (RTX 5090, 20/09, medição 2 — `saida_llm/analise/log_medicao2.txt`):
 
-**Reprodução sem GPU** do que o modelo respondeu: `saida_llm/cache_llm.jsonl` (exportado ao fim)
-+ `CACA_LLM_SOMENTE_CACHE=1 CACA_LLM_CACHE_IMPORTAR=saida_llm/cache_llm.jsonl make rodar
-ARBITRO=transformers` — o modelo não é carregado, torch não é exigido, e a saída é a mesma.
+| conjunto | núcleo | árbitro | Δ | LLM emitiu (certas) | s/doc |
+|---|---|---|---|---|---|
+| dev, n3_ood, r2_chave_parcial, r5_distratores_orgaos, r5_processos_ocr_combo, r6_extrator_distratores, ruido_n2, vagas | — | **idênticos** (byte a byte) | 0 | 0 (0) | 3,5–19,5 |
+| r6_extrator_formas | 0,59657 | **1,07203** | **+0,47546** | 67 (66), τ = 0 | 24,1 |
+
+→ **VEREDITO: LIGAR** (1.088 chamadas, 26 min). A medição 1 (mesma máquina, prompt anterior) tinha
+dado MANTER DESLIGADO por FPs em distratores e normalização; a v1.2.1 fechou isso na validação
+determinística (ADR 0003, "Medição 1"), não no modelo. A única extração errada da medição 2 era um
+defeito do gerador (estado por extenso diferente do registro; corrigido na v1.2.2).
+
+**Reprodução sem GPU** do que o modelo respondeu: `saida_llm/cache_llm.jsonl` (exportado ao fim;
+acompanha a submissão junto com `dados/`, **nunca versionado** — contém janelas dos documentos) +
+`make reproduzir ARBITRO=transformers CACHE_LLM=saida_llm/cache_llm.jsonl REFERENCIA=submission.csv`
+(o modelo não é carregado, torch não é exigido, zero chamadas ao modelo, e a saída é a mesma; ≈ 5 s).
+Equivalente manual: `CACA_LLM_SOMENTE_CACHE=1 CACA_LLM_CACHE_IMPORTAR=saida_llm/cache_llm.jsonl make
+rodar ARBITRO=transformers`. No dev a submissão com o árbitro é idêntica à do núcleo (o regex já
+cobre tudo); a diferença aparece em formas que o regex não cobre — o que o conjunto cego pode trazer.
 
 ### 4. Docker (o comando exato da organização) e verificação de reprodutibilidade
 ```bash
@@ -227,9 +245,13 @@ make docker-digests                       # fixa as imagens-base por digest (exi
 ### 5. Kaggle
 1. Envie `submission.csv` em **Submit Prediction** (o Kaggle aceita só o CSV; limite de 5 envios/dia por equipe).
 2. Quando o conjunto cego for publicado na aba Data: coloque os `.txt` em `dados/cego/txt` e rode
-   `make rodar ENTRADA=dados/cego/txt SAIDA=saida_cego` e
-   `python scripts/gerar_submissao.py --saida saida_cego --destino submission_cego.csv --sample <sample_submission do cego>`.
-3. Marque as 2 submissões finais em *Submissions → Select* antes de 30/09/2026 23h59 (BRT).
+   as **duas** versões — núcleo (`make rodar ENTRADA=dados/cego/txt SAIDA=saida_cego`) e núcleo +
+   árbitro (`scripts\rodar_llm_wsl.cmd` / `make rodar ARBITRO=transformers ENTRADA=dados/cego/txt
+   SAIDA=saida_cego_llm`, que também exporta o cache) — e gere um CSV de cada com
+   `python scripts/gerar_submissao.py --saida <pasta> --destino <csv> --sample <sample_submission do cego>`.
+3. Envie os dois CSVs e marque **os dois** em *Submissions → Select* antes de 30/09/2026 23h59 (BRT):
+   o Kaggle conta a melhor das selecionadas no placar privado, então ligar o árbitro nunca rebaixa.
+   O bundle reproduz os dois (o do árbitro pelo `cache_llm.jsonl` do cego, sem GPU).
 
 ## Política de dados
 

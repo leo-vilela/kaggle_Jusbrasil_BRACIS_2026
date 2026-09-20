@@ -1,6 +1,6 @@
 # ADR 0003 — Árbitro LLM residual (Qwen2.5-7B-Instruct, pesos abertos)
 
-Data: 16/09/2026. Estado: aceita (backend real ainda sem revisão fixa — ver "Pendências").
+Data: 16/09/2026. Estado: aceita; árbitro **ligado** desde 20/09/2026 (medição 2 com o Qwen real, abaixo).
 Escopo: `src/caca_alucinacao/llm/` (`arbitro.py`, `prompts.py`, `backends.py`, `cache.py`),
 `tests/test_llm.py`, `scripts/{baixar_modelo.sh,limitar_gpu.ps1,avaliar_arbitro.py}`,
 `MANIFESTO_MODELO.md`.
@@ -223,6 +223,41 @@ Especial` devolveu `RESE`, para `Sún1ula 211 do STJ` devolveu tribunal `TST`. R
 as 65 restantes estão em `r6_extrator_formas`; as 19 respostas truncadas, recuperadas, acrescentam 0
 propostas aceitas. A medição 2 (prompt `2026-09-20.3`) é o que decide.
 
+**Medição 2 com o modelo real — DECISÃO: LIGAR** (20/09, mesma máquina, v1.2.1, prompt
+`2026-09-20.3`; 9 conjuntos, 1.088 chamadas, 26 min no total, `saida_llm/analise/log_medicao2.txt`):
+
+| conjunto | núcleo | árbitro | Δ | LLM emitiu (certas) | s/doc |
+|---|---|---|---|---|---|
+| dev | 1,10000 (1,0999960) | idêntico | 0 | 0 (0) | 7,0 |
+| n3_ood | 1,09986 | idêntico | 0 | 0 (0) | 7,1 |
+| r2_chave_parcial | 1,09998 | idêntico | 0 | 0 (0) | 14,0 |
+| r5_distratores_orgaos | 1,02667 | idêntico | 0 | 0 (0) | 3,5 |
+| r5_processos_ocr_combo | 1,09945 | idêntico | 0 | 0 (0) | 8,4 |
+| r6_extrator_distratores | 1,10000 | idêntico | 0 | 0 (0) | 19,5 |
+| r6_extrator_formas | 0,59657 | **1,07203** | **+0,47546** | 67 (66), τ = 0 | 24,1 |
+| ruido_n2 | 1,09866 | idêntico | 0 | 0 (0) | 8,1 |
+| vagas | 1,08506 | idêntico | 0 | 0 (0) | 9,4 |
+
+Os quatro critérios passam: (a) nenhuma queda; (b) `inventada→real` 0 → 0 em todos; (c)
+`r6_extrator_formas` sobe e `r6_extrator_distratores` tem 0 emissões (a medição 1 tinha 3); (d) dev
+idêntico byte a byte — a `submission.csv` com o árbitro tem o **mesmo SHA-256** da do núcleo
+(`a5f6b066…`). A máscara e a resposta compacta cortaram o custo de 19,7 para 7,0 s/doc no dev (nenhuma
+resposta truncada). A única extração errada é um defeito do gerador, não do pipeline: em
+`adv_r6_extrator_formas_n2_004` o texto dizia "oriundo de São Paulo" para um registro de outra UF
+(o mapa `UF_EXT` só tinha 9 estados e caía em São Paulo) — o validador leu SP, a resolução deu
+`uf_incompativel` → `inventada`, e o gabarito dizia `real`. Corrigido na v1.2.2 (os 27 estados; o
+conjunto regenerado muda só nesse documento; a tabela acima é a medida no conjunto de então).
+
+Consequências: o árbitro fica **ligado** na imagem de submissão (`Dockerfile.llm`) e na rodada do
+conjunto cego; no dev a saída é a mesma do núcleo, então a submissão de referência não muda. A
+reprodução da submissão com o árbitro é `make reproduzir ARBITRO=transformers
+CACHE_LLM=saida_llm/cache_llm.jsonl` (`reproduzir.py --arbitro --cache-llm`): o pipeline roda 2×
+só do cache exportado (`CACA_LLM_SOMENTE_CACHE=1`), com zero chamadas ao modelo, e o CSV bate byte a
+byte — 5 s, sem torch. O `cache_llm.jsonl` contém janelas dos documentos e por isso **não é
+versionado**: acompanha a submissão como `dados/`. Para o cego, a estratégia é rodar núcleo e
+núcleo + árbitro, enviar os dois CSVs e selecionar os dois no Kaggle (vale a melhor das
+selecionadas no placar privado): ligar o árbitro nunca rebaixa a posição final.
+
 **Reprodução sem GPU.** Todas as respostas do modelo ficam em `CACA_CACHE_LLM` (SQLite) e são
 exportadas em JSONL (`cache_llm.jsonl`); com `CACA_LLM_SOMENTE_CACHE=1` e
 `CACA_LLM_CACHE_IMPORTAR=<jsonl>` o backend `transformers`/`vllm` nem carrega o modelo (nem exige
@@ -296,13 +331,14 @@ com ≥ 2 letras ambíguas sem reparo) — pendência registrada abaixo, não bl
 ## Pendências
 
 * ~~Perfil do gerador que force os gatilhos do árbitro (R3q-10) e teste de integração
-  LLM→resolução com `mock`~~ — feito em 20/09 (`gerar_adversarial_r6.py`, `tests/test_extrator.py`,
-  `comparar_arbitro.py`); falta a medição com o modelo real (`rodar_llm_local.py`).
-* **Pesos**: huggingface.co é inacessível deste ambiente; a revisão está fixada (acima) mas o
-  download (`bash scripts/baixar_modelo.sh` no WSL2) e o `modelos/manifesto_modelo.json` com
-  tamanhos/SHA-256 ainda precisam ser gerados na máquina com GPU.
-* Medir na 5090 e num L4/A10 emulado (fração de VRAM + 450 W): latência por operação com
-  `scripts/avaliar_arbitro.py` sobre os sintéticos difíceis do gerador; decidir por
+  LLM→resolução com `mock`; medição com o modelo real~~ — feito em 20/09 (`gerar_adversarial_r6.py`,
+  `tests/test_extrator.py`, `comparar_arbitro.py`, `rodar_llm_local.py`/`rodar_llm_wsl.cmd`; medições
+  1 e 2 acima, veredito LIGAR).
+* ~~**Pesos**: download e hash na máquina com GPU~~ — feito em 20/09 (`saida_llm/modelo.json`: snapshot
+  `a09a354…`, hash `2ea2bfcc05657159`; `scripts/baixar_modelo.sh` continua sendo o caminho do Docker).
+* Medir num L4/A10 emulado (fração de VRAM + 450 W): na 5090 o extrator custa 3,5–24 s/doc (dev 7,0);
+  numa L4 (≈ 3× mais lenta) o orçamento de 30 s/doc cortaria janelas em documentos longos — por isso
+  a rodada do cego é feita na 5090 e o cache exportado acompanha a submissão. Decidir por
   `transformers` (padrão) ou `vllm`; fixar versões em `requirements-llm.txt`.
 * Comparar `PROMPT_VERSAO` futuras só pelo avaliador (acurácia por operação, taxa de
   abstenção, `digitos_errados` = 0 obrigatório).

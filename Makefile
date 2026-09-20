@@ -25,8 +25,8 @@ ajuda:
 	@echo "alvos: reproduzir dados indice testar lint rodar avaliar submissao sinteticos adversarial calibrar docker docker-rodar docker-llm limpar"
 	@echo "ex.: make dados ZIP=~/Downloads/desafio-jusbrasil-bracis-2026.zip && make indice && make rodar && make avaliar"
 
-reproduzir:       ## tudo de uma vez: SHA-256 dos dados, derivados, testes, vazamento, pipeline 2x (byte a byte), métrica oficial, CSV
-	$(PYTHON) scripts/reproduzir.py $(if $(REFERENCIA),--referencia $(REFERENCIA),)
+reproduzir:       ## tudo de uma vez: SHA-256 dos dados, derivados, testes, vazamento, pipeline 2x (byte a byte), métrica oficial, CSV; ARBITRO=transformers CACHE_LLM=saida_llm/cache_llm.jsonl = com o Qwen, só do cache (sem GPU)
+	$(PYTHON) scripts/reproduzir.py $(if $(REFERENCIA),--referencia $(REFERENCIA),) $(if $(filter-out nenhum,$(ARBITRO)),--arbitro $(ARBITRO) $(if $(CACHE_LLM),--cache-llm $(CACHE_LLM),),)
 
 dados:            ## extrai o zip da aba Data para dados/, confere SHA-256 e offsets do gabarito; gera o catálogo local
 	$(PYTHON) scripts/preparar_dados.py --zip $(ZIP) --dados dados
