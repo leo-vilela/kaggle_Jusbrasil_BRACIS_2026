@@ -10,30 +10,34 @@ Este arquivo é a referência de modelos do bundle; `modelos/manifesto_modelo.js
 
 | Campo | Valor |
 |---|---|
-| Nome | `Qwen/Qwen2.5-7B-Instruct` |
-| Link | https://huggingface.co/Qwen/Qwen2.5-7B-Instruct |
+| Nome | `Qwen/Qwen3.5-9B` (v1.3.0; ADR 0003 "Medição 3") |
+| Link | https://huggingface.co/Qwen/Qwen3.5-9B |
 | Licença | Apache-2.0 (LICENSE no repositório do modelo) |
-| Revisão (commit) | `a09a35458c702b33eeacc393d103063234e8bc28` (`main` em 2025-01-11); link fixo: https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/tree/a09a35458c702b33eeacc393d103063234e8bc28 — a mesma revisão está em `modelos/revisao_fixa.env` (versionado) e é o valor padrão de `--build-arg CACA_MODELO_REVISAO` no `Dockerfile.llm`; `scripts/baixar_modelo.sh -r` confere o commit resolvido contra ela |
-| Variável | `CACA_MODELO_REVISAO=<commit>` — obrigatória: o backend **recusa** (código 2) revisão vazia, salvo `CACA_MODELO` apontando para um snapshot local (então o hash de `config.json` + shards vai para o log e para a chave do cache); `Dockerfile.llm` grava-a como `ENV` a partir de `--build-arg` (padrão = a revisão acima) e o build falha se ela for esvaziada |
-| Parâmetros | 7,6 B (7,07 B sem embeddings), 28 camadas, GQA 28/4, contexto 32k (usamos ≤ 4k) |
-| Formato | safetensors, 4 shards, bf16 ≈ 15,2 GB em disco |
-| Alternativa quantizada oficial | `Qwen/Qwen2.5-7B-Instruct-AWQ`, revisão `b25037543e9394b818fdfca67ab2a00ecc7dd641` (2024-10-09; https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-AWQ/tree/b25037543e9394b818fdfca67ab2a00ecc7dd641; Apache-2.0; ≈ 5,6 GB; requer `autoawq`/kernels; só se a VRAM apertar — `bash scripts/baixar_modelo.sh -m Qwen/Qwen2.5-7B-Instruct-AWQ -r <essa revisão>`) |
+| Revisão (commit) | `c202236235762e1c871ad0ccb60c8ee5ba337b9a`; link fixo: https://huggingface.co/Qwen/Qwen3.5-9B/tree/c202236235762e1c871ad0ccb60c8ee5ba337b9a — a mesma revisão está em `modelos/revisao_fixa.env` (versionado) e é o valor padrão de `--build-arg CACA_MODELO_REVISAO` no `Dockerfile.llm`; `scripts/baixar_modelo.sh -r` confere o commit resolvido contra ela |
+| Variável | `CACA_MODELO_REVISAO=<commit>` — obrigatória: o backend **recusa** (código 2) revisão vazia, salvo `CACA_MODELO` apontando para um snapshot local (então o hash de `config.json` + shards vai para o log e, sem `CACA_MODELO_ID`, para a chave do cache); `Dockerfile.llm` grava-a como `ENV` a partir de `--build-arg` (padrão = a revisão acima) e o build falha se ela for esvaziada |
+| Quantização | **NF4** (bitsandbytes 0.50.2, dupla quantização, cálculo bf16; `CACA_LLM_4BIT=1`, fixado em `modelos/revisao_fixa.env` e no `Dockerfile.llm`) aplicada na carga aos pesos originais; `visual` (encoder de imagem, não usado) e `lm_head` ficam em bf16. `CACA_LLM_4BIT` entra na assinatura do backend e, portanto, na chave do cache |
+| Arquitetura | `Qwen3_5ForConditionalGeneration` (multimodal; só texto é usado), 32 camadas, atenção híbrida, vocabulário 248k; carregada pela classe homônima do `transformers` 5.16.1, SDPA, sem kernels do Hub, *chat template* oficial com `enable_thinking=False` (sem bloco de raciocínio) |
+| Parâmetros | ≈ 9 B |
+| Formato | safetensors bf16 (≈ 18 GB em disco; ≈ 7 GB de VRAM em NF4) |
+| Alternativa medida | `Qwen/Qwen2.5-7B-Instruct`, revisão `a09a35458c702b33eeacc393d103063234e8bc28` (`main` em 2025-01-11; https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/tree/a09a35458c702b33eeacc393d103063234e8bc28; Apache-2.0; bf16 ≈ 15,2 GB; `Qwen2ForCausalLM`, 28 camadas): o árbitro da v1.0–v1.2.5 (medições 1 e 2, ADR 0003) — mesma saída nos documentos reais, menos formas recuperadas (67 × 69 em `r6_extrator_formas`), 2–5× mais rápido por janela; `bash scripts/baixar_modelo.sh -m Qwen/Qwen2.5-7B-Instruct -r a09a35458c702b33eeacc393d103063234e8bc28` e `CACA_LLM_4BIT=""` |
+| Quantizada oficial do Qwen2.5 | `Qwen/Qwen2.5-7B-Instruct-AWQ`, revisão `b25037543e9394b818fdfca67ab2a00ecc7dd641` (2024-10-09; https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-AWQ/tree/b25037543e9394b818fdfca67ab2a00ecc7dd641; Apache-2.0; ≈ 5,6 GB; requer `autoawq`/kernels; não medida) |
 | Fine-tuning | **nenhum** — pesos originais, sem adaptação; nada a publicar |
 
-Por que este modelo: docs/decisoes/0003-arbitro-llm.md.
+Por que este modelo: docs/decisoes/0003-arbitro-llm.md ("Medição 3": 8 de 9 conjuntos idênticos ao
+núcleo, τ = 0, 0 emissões nos distratores, 69 de 69 extrações certas nas formas que o regex não cobre,
+contra 67 do Qwen2.5; dentro do envelope de tempo).
 
 ## VRAM e tempo esperados (envelope: 24 GB, offline)
 
-| Configuração | VRAM (pesos + KV ≤ 4k tokens) | Latência por chamada (prompt de 1,5–2,2k tokens, ≤ 160 de saída) |
+| Configuração | VRAM | Latência medida/esperada |
 |---|---|---|
-| bf16, `transformers`, greedy (padrão) | ≈ 15,5 GB + ≈ 1–2 GB de ativações/KV → **≈ 17–18 GB** | L4: ≈ 5–10 s; A10: ≈ 4–8 s; 4090/5090: ≈ 1–3 s (estimativa: prefill < 1 s + decodificação a 15–60 tok/s; **medir**) |
-| NF4 (bitsandbytes), `CACA_LLM_4BIT=1` | ≈ 5,5 GB + KV → ≈ 7–8 GB | mais lento em decodificação (kernels 4-bit); contingência **fora da imagem**: `bitsandbytes` não está em requirements-llm.txt (não há pin verificado para torch 2.7.1/cu128 aqui); nesse modo a imagem termina com código 2 na partida até que o pacote seja pinado e adicionado |
-| vLLM bf16, `gpu_memory_utilization` calculado para 24 GB | reserva ≈ 22 GB (pesos + KV cache pré-alocado) | prefill em lote; melhor throughput |
+| **Qwen3.5-9B NF4, `transformers`, greedy (padrão, v1.3.0)** | ≈ 7 GB (pesos) + KV/ativações → **≈ 8–10 GB** | RTX 5090 (420 W): 7,5 s/doc no dev (≈ 4 janelas/doc; ≈ 2 s por janela de extração), 17–39 s/doc nos adversariais densos em janelas; L4/A10 ≈ 3–4× mais lento por janela — o orçamento interno do extrator (30 s/doc) corta janelas antes de o envelope de 60 s/doc ser tocado |
+| Qwen2.5-7B-Instruct bf16, `transformers`, greedy (v1.0–v1.2.5) | ≈ 15,5 GB + ≈ 1–2 GB → ≈ 17–18 GB | RTX 5090: 7,0 s/doc no dev, 3,5–24 s/doc nos adversariais (medição 2) |
+| vLLM bf16, `gpu_memory_utilization` calculado para 24 GB | reserva ≈ 22 GB (pesos + KV cache pré-alocado) | prefill em lote; melhor throughput; só medido com o Qwen2.5 |
 
-Orçamento de tempo: o árbitro é **residual** (docs/04, h.3). Estimativa de
-chamadas: 0–3 por documento (mediana 0). Com 10 s por chamada no pior caso (L4)
-e 3 chamadas, o documento fica em ≈ 30 s + núcleo determinístico (< 1 s), abaixo
-dos 60 s de média (e a média real é dominada pelos documentos sem chamada). O cache em disco (`CACA_CACHE_LLM`) elimina chamadas repetidas.
+Orçamento de tempo: o árbitro é **residual** (docs/04, h.3): nos documentos reais do dev ele não
+emite nada (as citações já vêm do regex) e o custo é o das janelas consultadas (≈ 4 por documento).
+O cache em disco (`CACA_CACHE_LLM`) elimina chamadas repetidas.
 
 Numa GPU maior (RTX 5090, 32 GB) o backend `transformers` chama
 `torch.cuda.set_per_process_memory_fraction(24/32)` e o vLLM recebe
@@ -46,7 +50,8 @@ o que reproduz o envelope da organização.
   `top_k=None`, `repetition_penalty=1.0`, `max_new_tokens` = 96 / 64 / 160 / 480 por operação
   (`normalizar` / `escolher` / `classificar` / `extrair` — o extrator de segundo estágio, ADR 0003),
   `torch.manual_seed(1234)` antes de cada `generate`, TF32 desligado, chat template
-  oficial do modelo (`apply_chat_template(add_generation_prompt=True)`), **um prompt por
+  oficial do modelo (`apply_chat_template(add_generation_prompt=True)`; nos modelos com modo de
+  raciocínio, Qwen3.x, `enable_thinking=False` — a resposta é o JSON, direto), **um prompt por
   `generate` (lote = 1, sem padding)** — a resolução consulta o árbitro um achado por vez e a
   decodificação greedy em lote com padding pode diferir numericamente da de prompt único;
   `CACA_LLM_LOTE` > 1 existe só para medição e entra na assinatura do backend (logo na chave
@@ -59,7 +64,7 @@ o que reproduz o envelope da organização.
   permite reproduzir a saída **sem GPU** (`somente_cache=True`).
 
 Determinismo entre GPUs diferentes (L4 × 4090 × 5090) não é garantido pelo
-hardware em bf16 (ordem de redução nos kernels). Mitigações: prompts curtos com
+hardware em bf16 nem nos kernels NF4 (ordem de redução nos kernels). Mitigações: prompts curtos com
 resposta curta e estruturada; validação que rejeita qualquer resposta fora do
 domínio; cache exportado junto com a submissão; uso residual (a esmagadora maioria
 das decisões é do núcleo determinístico e não depende do modelo). Ver ADR 0003.
@@ -68,7 +73,7 @@ das decisões é do núcleo determinístico e não depende do modelo). Ver ADR 0
 
 ```bash
 pip install -U "huggingface_hub[cli]"
-source modelos/revisao_fixa.env                  # CACA_MODELO + CACA_MODELO_REVISAO fixados (versionado)
+source modelos/revisao_fixa.env                  # CACA_MODELO + CACA_MODELO_REVISAO + CACA_LLM_4BIT fixados (versionado)
 bash scripts/baixar_modelo.sh                    # baixa a revisão fixada e confere o commit resolvido
 bash scripts/baixar_modelo.sh -r main            # só para AUDITAR se main mudou (o bundle usa a revisão fixa)
 source modelos/modelo.env                        # exporta CACA_MODELO, CACA_MODELO_REVISAO, HF_HOME, *_OFFLINE=1

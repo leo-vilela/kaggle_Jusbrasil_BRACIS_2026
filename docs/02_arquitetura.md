@@ -164,8 +164,8 @@ class Arbitro(Protocol):
     def e_citacao(self, trecho, contexto) -> dict | None                          # {"familia","tipo","inicio_rel","fim_rel"} ou None
 ```
 Backends: `mock` (heurístico, para testes), `transformers` (bf16, greedy,
-`do_sample=False`, seed fixa), `vllm` (opcional). Modelo: `Qwen/Qwen2.5-7B-Instruct`
-com revisão fixa em `MANIFESTO_MODELO.md`. Cache em disco por hash do prompt.
+`do_sample=False`, seed fixa), `vllm` (opcional). Modelo: `Qwen/Qwen3.5-9B` em NF4 desde a v1.3.0
+(`Qwen/Qwen2.5-7B-Instruct` bf16 até a v1.2.5), com revisão fixa em `MANIFESTO_MODELO.md`. Cache em disco por hash do prompt.
 Saída sempre JSON validado; falha de parsing = abstenção (`None`), nunca
 exceção que derrube o documento. Limite de VRAM: `torch.cuda.set_per_process_memory_fraction`
 para ≤ 24 GB quando a GPU tiver mais.
@@ -223,7 +223,7 @@ CLI: `python -m caca_alucinacao.cli --input <txt/> --output <json/> --db <db> [-
   `csv.field_size_limit` ampliado em `avaliar.py`/`gerar_submissao.py` (célula `citacoes` de
   milhares de citações); `make sinteticos` gera `n2_dev`/`n3_ood`/`n2_ag_treino` com os seeds
   documentados e o `manifesto.json` grava o índice relativo à raiz;
-  `Dockerfile.llm` com torch 2.7.1 + CUDA 12.8, `HF_HOME` apontado para `/modelos/hf`,
+  `Dockerfile.llm` com torch 2.11.0 + CUDA 12.8 (v1.3.0; antes 2.7.1), `HF_HOME` apontado para `/modelos/hf`,
   `requirements-llm.txt` pinado e `torch.use_deterministic_algorithms(True, warn_only=True)`.
 - (rodada 4) lote vazio → código 2 com mensagem (nunca um "sucesso" de zero JSONs); arquivos
   ocultos (`.x.txt`, `._x.txt`) ignorados com aviso; `cp1252` só quando o arquivo não tem NENHUMA

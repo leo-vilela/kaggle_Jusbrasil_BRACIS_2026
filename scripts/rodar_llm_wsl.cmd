@@ -3,6 +3,8 @@ rem Medição do árbitro LLM na GPU, pelo WSL2, em um clique (duplo clique nest
 rem Usa a distro e o venv abaixo (edite se os seus forem outros); grava tudo em saida_llm\ (log.txt, ambiente.json,
 rem modelo.json, comparacao\comparacao_arbitro.json, dev_arbitro\, submission_llm.csv, cache_llm.jsonl).
 rem Argumentos extras vão para scripts/rodar_llm_local.py (ex.: --completo, --modelo /opt/bracis/models/x, --so dev).
+rem Sem argumentos usa o modelo da revisão fixa pelo cache do Hugging Face (baixa se faltar); nesta máquina, com o
+rem snapshot local do Qwen3.5-9B, prefira rodar_llm_q35_wsl.cmd (mesmo modelo, nada a baixar).
 rem A pasta de saída do log segue a variável SAIDA (padrão saida_llm) — os wrappers (rodar_llm_q35_wsl.cmd) a definem
 rem junto com o --saida correspondente.
 setlocal

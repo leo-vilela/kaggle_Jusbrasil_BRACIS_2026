@@ -1,17 +1,18 @@
 # Árbitro LLM (opcional; Dockerfile.llm). Versões pinadas (==) para a revisão fixa exigida pelo
-# desafio; torch 2.7.1+cu128 já vem na imagem base pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
+# desafio; torch 2.11.0+cu128 já vem na imagem base pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime
 # (Blackwell/sm_120 e anteriores). O commit dos pesos está em MANIFESTO_MODELO.md; o build gera
 # /app/requirements-llm.lock (pip freeze) como lock completo.
-transformers==4.51.3
-accelerate==1.7.0
-safetensors==0.5.3
-sentencepiece==0.2.0
-huggingface_hub==0.31.4
-# vllm==0.9.1   # opcional (--arbitro vllm); exige build com a mesma CUDA
 #
-# Experimento Qwen3.5-9B em NF4 (ADR 0003 §Medição 3; scripts/rodar_llm_q35_wsl.cmd): a família
-# Qwen3_5ForConditionalGeneration só existe em transformers >= 5 e a quantização pede bitsandbytes.
-# O ambiente medido foi torch 2.11.0+cu128, transformers 5.16.1, bitsandbytes 0.50.2 (venv /opt/bracis).
-# Se o Qwen3.5 vencer a medição, os pinos acima (e a base do Dockerfile.llm) mudam para esse conjunto:
-# transformers==5.16.1
-# bitsandbytes==0.50.2
+# v1.3.0 (ADR 0003 "Medição 3"): Qwen3.5-9B em NF4 — a família Qwen3_5ForConditionalGeneration só existe
+# em transformers >= 5 e a quantização pede bitsandbytes. São as versões do venv em que as medições 2 e 3
+# rodaram na RTX 5090 (Python 3.13.5, torch 2.11.0+cu128).
+transformers==5.16.1
+accelerate==1.14.0
+bitsandbytes==0.50.2
+safetensors>=0.6,<1
+sentencepiece==0.2.0
+huggingface_hub==1.30.0
+# vllm   # opcional (--arbitro vllm); só medido com o Qwen2.5-7B-Instruct bf16; exige build com a mesma CUDA
+#
+# Conjunto anterior (v1.0–v1.2.5, Qwen2.5-7B-Instruct bf16 sobre pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime):
+# transformers==4.51.3  accelerate==1.7.0  safetensors==0.5.3  sentencepiece==0.2.0  huggingface_hub==0.31.4

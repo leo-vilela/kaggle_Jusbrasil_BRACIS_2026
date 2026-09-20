@@ -3,7 +3,7 @@
     python scripts/reproduzir.py                                  # tudo, em saida_reproducao/
     python scripts/reproduzir.py --referencia submission_v1_1.csv  # e compara o CSV gerado com um entregue
     python scripts/reproduzir.py --sem-testes                      # só pipeline + métrica + CSV
-    python scripts/reproduzir.py --arbitro transformers --cache-llm saida_llm/cache_llm.jsonl \
+    python scripts/reproduzir.py --arbitro transformers --cache-llm saida_llm_q35/cache_llm.jsonl \
         --referencia submission_v1_2.csv                           # com o árbitro LLM, SEM GPU (só o cache)
 
 Etapas, na ordem, cada uma com veredito próprio:
@@ -121,16 +121,16 @@ def pasta_limpa(pasta: Path) -> Path:
 
 def ambiente_arbitro(arbitro: str, cache_llm: Path | None) -> dict[str, str] | None:
     """Variáveis para o pipeline rodar o árbitro **só do cache** (``{}`` sem árbitro; ``None`` se o
-    JSONL não existe): modelo e revisão fixa de ``modelos/revisao_fixa.env`` (a chave do cache inclui
-    os dois), ``CACA_LLM_SOMENTE_CACHE=1`` e ``CACA_LLM_CACHE_IMPORTAR=<jsonl>``."""
+    JSONL não existe): modelo, revisão fixa e quantização de ``modelos/revisao_fixa.env`` (a chave do
+    cache inclui os três), ``CACA_LLM_SOMENTE_CACHE=1`` e ``CACA_LLM_CACHE_IMPORTAR=<jsonl>``."""
     if arbitro == "nenhum":
         return {}
     env: dict[str, str] = {}
     fixo = RAIZ / "modelos" / "revisao_fixa.env"
     if fixo.exists():
         for linha in fixo.read_text(encoding="utf-8").splitlines():
-            m = re.match(r'\s*export\s+(CACA_MODELO|CACA_MODELO_REVISAO)="([^"]*)"', linha)
-            if m and not os.environ.get(m.group(1)):
+            m = re.match(r'\s*export\s+(CACA_MODELO|CACA_MODELO_REVISAO|CACA_LLM_4BIT)="([^"]*)"', linha)
+            if m and os.environ.get(m.group(1)) is None:
                 env[m.group(1)] = m.group(2)
     if cache_llm is not None:
         if not cache_llm.exists():
@@ -160,7 +160,7 @@ def main() -> int:
     ap.add_argument("--arbitro", default="nenhum", choices=("nenhum", "transformers", "vllm", "mock"),
                     help="árbitro LLM do pipeline (padrão: nenhum = só o núcleo)")
     ap.add_argument("--cache-llm", type=Path, default=None,
-                    help="JSONL exportado do cache do árbitro (saida_llm/cache_llm.jsonl): o árbitro responde só dele, sem GPU")
+                    help="JSONL exportado do cache do árbitro (saida_llm_q35/cache_llm.jsonl): o árbitro responde só dele, sem GPU")
     args = ap.parse_args()
     if args.arbitro not in ("nenhum", "mock") and args.cache_llm is None:
         ap.error("--arbitro transformers/vllm exige --cache-llm <jsonl> (a reprodução nunca chama o modelo)")

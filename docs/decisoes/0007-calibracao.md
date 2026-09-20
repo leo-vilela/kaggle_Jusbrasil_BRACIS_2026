@@ -207,7 +207,7 @@ oficial rodava o núcleo (`--arbitro nenhum`), e as decisões do `mock` nunca tr
 (ADR 0003). Com o árbitro ligado (medição 2), as 64 extrações do Qwen em `r6_extrator_formas` eram
 todas certas e saíam com confiança 0,70–0,85 — Brier 0,031 nesse conjunto, contra 0,002 no resto.
 
-**Decisão.** `scripts/calibrar_completo.py --cache-llm saida_llm/cache_llm.jsonl` (`make
+**Decisão.** `scripts/calibrar_completo.py --cache-llm <cache_llm.jsonl da medição>` (`make
 calibrar-completo CACHE_LLM=…`) roda os 38 conjuntos com `--arbitro transformers` **só do cache**
 exportado da medição (`CACA_LLM_SOMENTE_CACHE=1`, zero chamadas, sem GPU, modelo e revisão de
 `modelos/revisao_fixa.env`; o script falha se algum conjunto fizer uma chamada ou ficar sem cache) e
@@ -236,5 +236,8 @@ conjuntos medidos e o dev ficam **byte a byte idênticos** (0 emissões), e a `s
 mantém o SHA-256 `a5f6b066…`. O ganho é pequeno por construção — o bônus de Brier vale ≤ 10 % do
 score e só toca as citações que o extrator emite — e no conjunto cego será zero se ele não emitir;
 o que muda é que, quando emitir, a confiança reportada reflete 64 decisões reais em vez de um chute.
-Se a medição 3 (ADR 0003, Qwen3.5-9B) trocar o modelo, o retreino é o mesmo comando com o novo
-`cache_llm.jsonl`.
+Com a adoção do Qwen3.5-9B (v1.3.0, ADR 0003 "Medição 3") a tabela versionada passou a ser a treinada
+com `saida_llm_q35/cache_llm.jsonl` (69 extrações reais, todas certas; holdout 51/51, Brier 0,0329 →
+0,0044; `meta.cache_llm` com modelo, revisão, `quatro_bits` e SHA-256): em relação à tabela treinada com
+o Qwen2.5 só `llm:extrator:processo` (0,979 → 0,98) e `:0cand` (0,94 → 0,948) mudam. Estado final:
+`r6_extrator_formas` com árbitro 1,09983; dev e demais conjuntos byte a byte idênticos ao núcleo.

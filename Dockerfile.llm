@@ -1,9 +1,10 @@
-# Imagem com CUDA para o árbitro LLM (Qwen2.5-7B-Instruct, pesos abertos, revisão fixa).
-# Só entra em uso se o árbitro melhorar o score no dev/sintéticos (docs/02_arquitetura.md, llm/).
+# Imagem com CUDA para o árbitro LLM (Qwen3.5-9B em NF4, pesos abertos, revisão fixa; v1.3.0, ADR 0003
+# "Medição 3"). Só entra em uso se o árbitro melhorar o score no dev/sintéticos (docs/02_arquitetura.md, llm/).
 #
 # Envelope da organização: 1 GPU 24 GB VRAM, ~8 vCPUs, 32 GB RAM, offline, média <= 60 s/doc.
 # Pesos NÃO ficam na imagem: baixar antes com scripts/baixar_modelo.sh (que grava o cache do
-# Hugging Face em modelos/hf) e montar modelos/ em /modelos. O CLI aponta HF_HOME para
+# Hugging Face em modelos/hf; ≈ 18 GB de safetensors bf16 — a quantização NF4 acontece na carga,
+# ≈ 7 GB de VRAM) e montar modelos/ em /modelos. O CLI aponta HF_HOME para
 # /modelos/hf automaticamente (config.preparar_ambiente_hf) e carrega o modelo por
 # CACA_MODELO + CACA_MODELO_REVISAO (commit) em modo offline. A imagem também funciona sem
 # GPU com --arbitro nenhum (mesmo núcleo do Dockerfile).
@@ -22,16 +23,17 @@
 # O árbitro segue o padrão ouro: extrai/desambigua com validação no texto e na base; nunca classifica.
 # Se os pesos não estiverem montados, o CLI registra ERROR e segue só com o núcleo (nunca zero JSONs).
 #
-# Base: torch 2.7.1 + CUDA 12.8 (kernels sm_120 — a RTX 5090/Blackwell exige CUDA >= 12.8 e
-# torch >= 2.7; a base 2.4.1+cu124 anterior falhava com "no kernel image is available").
-# L4/A10/A100 (sm_89/sm_86/sm_80) também estão cobertas por esta base. Revisão R3-03.
+# Base: torch 2.11.0 + CUDA 12.8 — o ambiente em que a medição 3 rodou (RTX 5090; kernels sm_120:
+# Blackwell exige CUDA >= 12.8; L4/A10/A100, sm_89/sm_86/sm_80, também cobertas). A família Qwen3.5
+# (Qwen3_5ForConditionalGeneration) exige transformers >= 5 e a quantização NF4 exige bitsandbytes —
+# pinos em requirements-llm.txt. Até a v1.2.5 a base era 2.7.1 com transformers 4.51.3 (Qwen2.5 bf16).
 # Fixe a base por digest antes do build de referência (docker pull … && docker inspect
 # --format='{{index .RepoDigests 0}}'): a tag muda com cada patch da imagem (R3b-07).
-FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
+FROM pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime
 
 # Revisão fixa dos pesos (MANIFESTO_MODELO.md / modelos/revisao_fixa.env); pode ser trocada por
 # --build-arg, mas nunca esvaziada (o build falha).
-ARG CACA_MODELO_REVISAO="a09a35458c702b33eeacc393d103063234e8bc28"
+ARG CACA_MODELO_REVISAO="c202236235762e1c871ad0ccb60c8ee5ba337b9a"
 RUN test -n "$CACA_MODELO_REVISAO" || { echo "ERRO: --build-arg CACA_MODELO_REVISAO=<commit dos pesos> não pode ser vazio (ver MANIFESTO_MODELO.md)"; exit 1; }
 ENV CACA_MODELO_REVISAO=$CACA_MODELO_REVISAO
 
@@ -44,7 +46,8 @@ ENV PYTHONHASHSEED=0 \
     CACA_CALIBRACAO=/app/dados/calibracao.json \
     CACA_MODELO_DIR=/modelos \
     HF_HOME=/modelos/hf \
-    CACA_MODELO=Qwen/Qwen2.5-7B-Instruct \
+    CACA_MODELO=Qwen/Qwen3.5-9B \
+    CACA_LLM_4BIT=1 \
     CACA_CACHE_LLM=/data/out/.cache_llm/arbitro_llm.sqlite \
     CACA_ARBITRO=transformers \
     CACA_LLM_EXTRATOR_JANELAS=6 \

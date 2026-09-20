@@ -1,15 +1,16 @@
 {
  "meta": {
-  "brier_treino_antes": 0.005678209634471141,
-  "brier_treino_depois": 0.0017722846531318748,
+  "brier_treino_antes": 0.005747505802707999,
+  "brier_treino_depois": 0.0017689139576718778,
   "cache_llm": {
    "arquivo": "cache_llm.jsonl",
    "extracoes_por_conjunto": {
-    "r6_extrator_formas": 64
+    "r6_extrator_formas": 69
    },
-   "modelo": "Qwen/Qwen2.5-7B-Instruct",
-   "revisao": "a09a35458c702b33eeacc393d103063234e8bc28",
-   "sha256": "03b560c665a86550854aa3df997843267ae1c9120656c387b5df39219a223260"
+   "modelo": "Qwen/Qwen3.5-9B",
+   "quatro_bits": true,
+   "revisao": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+   "sha256": "e0a405fd7268437416ea7154b01175542c1652700933535d6aa660ece9fa49cd"
   },
   "caminhos_consolidados": [
    "dispositivo",
@@ -50,28 +51,28 @@
     "n": 19.0
    },
    "llm": {
-    "acertos": 64.0,
-    "n": 64.0
+    "acertos": 69.0,
+    "n": 69.0
    },
    "llm:extrator": {
-    "acertos": 64.0,
-    "n": 64.0
+    "acertos": 69.0,
+    "n": 69.0
    },
    "llm:extrator:processo": {
-    "acertos": 43.0,
-    "n": 43.0
+    "acertos": 48.0,
+    "n": 48.0
    },
    "llm:extrator:processo:0cand": {
-    "acertos": 16.0,
-    "n": 16.0
+    "acertos": 19.0,
+    "n": 19.0
    },
    "llm:extrator:processo:1cand": {
-    "acertos": 27.0,
-    "n": 27.0
+    "acertos": 29.0,
+    "n": 29.0
    },
    "llm:extrator:processo:1cand:cadeia_exata": {
-    "acertos": 27.0,
-    "n": 27.0
+    "acertos": 29.0,
+    "n": 29.0
    },
    "llm:extrator:sumula": {
     "acertos": 9.0,
@@ -447,8 +448,8 @@
     "nome": "rastro:cal_r5_layouts/rastro.jsonl"
    },
    {
-    "acertos": 103,
-    "n": 103,
+    "acertos": 108,
+    "n": 108,
     "nome": "rastro:cal_r6_extrator_formas/rastro.jsonl"
    },
    {
@@ -457,16 +458,16 @@
     "nome": "rastro:cal_r6_extrator_distratores/rastro.jsonl"
    }
   ],
-  "gerado_em": "2026-09-20T18:16:50+00:00",
+  "gerado_em": "2026-09-20T18:55:22+00:00",
   "holdout_llm": {
    "conjunto": "r6_extrator_formas",
    "documentos_treino": 6,
    "documentos_validacao": 6,
    "validacao": {
-    "acertos": 46,
-    "brier_antes": 0.029576086956521735,
-    "brier_depois": 0.004408560583653752,
-    "n": 46
+    "acertos": 51,
+    "brier_antes": 0.032852941176470585,
+    "brier_depois": 0.00444053443599662,
+    "n": 51
    }
   },
   "n_minimo_consolidado": 100,
@@ -500,8 +501,8 @@
   "llm": 0.98,
   "llm:extrator": 0.98,
   "llm:extrator:dispositivo": 0.8,
-  "llm:extrator:processo": 0.9787,
-  "llm:extrator:processo:0cand": 0.94,
+  "llm:extrator:processo": 0.98,
+  "llm:extrator:processo:0cand": 0.9478,
   "llm:extrator:processo:1cand": 0.98,
   "llm:extrator:processo:1cand:cadeia_exata": 0.98,
   "llm:extrator:processo:multi": 0.65,

@@ -25,7 +25,7 @@ ajuda:
 	@echo "alvos: reproduzir dados indice testar lint rodar avaliar submissao sinteticos adversarial calibrar docker docker-rodar docker-llm limpar"
 	@echo "ex.: make dados ZIP=~/Downloads/desafio-jusbrasil-bracis-2026.zip && make indice && make rodar && make avaliar"
 
-reproduzir:       ## tudo de uma vez: SHA-256 dos dados, derivados, testes, vazamento, pipeline 2x (byte a byte), métrica oficial, CSV; ARBITRO=transformers CACHE_LLM=saida_llm/cache_llm.jsonl = com o Qwen, só do cache (sem GPU)
+reproduzir:       ## tudo de uma vez: SHA-256 dos dados, derivados, testes, vazamento, pipeline 2x (byte a byte), métrica oficial, CSV; ARBITRO=transformers CACHE_LLM=saida_llm_q35/cache_llm.jsonl = com o Qwen, só do cache (sem GPU)
 	$(PYTHON) scripts/reproduzir.py $(if $(REFERENCIA),--referencia $(REFERENCIA),) $(if $(filter-out nenhum,$(ARBITRO)),--arbitro $(ARBITRO) $(if $(CACHE_LLM),--cache-llm $(CACHE_LLM),),)
 
 dados:            ## extrai o zip da aba Data para dados/, confere SHA-256 e offsets do gabarito; gera o catálogo local
@@ -72,7 +72,7 @@ adversarial:      ## regenera os 34 conjuntos adversariais das revisões (script
 calibrar:         ## ajuste rápido de $(CALIBRACAO) a partir de UM rastro (scripts/treinar_calibracao.py); o oficial é calibrar-completo
 	$(PYTHON) scripts/treinar_calibracao.py --rastro $(RASTRO) --relatorio $(RELATORIO) --saida $(CALIBRACAO)
 
-calibrar-completo: ## retreino oficial e reproduzível: regenera sintéticos + 34 adversariais, pipeline em 38 conjuntos, treina em 37 e valida em n3_ood; compara com dados/calibracao.json (GRAVAR=1 grava; CACHE_LLM=saida_llm/cache_llm.jsonl = árbitro real só do cache, treina os caminhos llm:*)
+calibrar-completo: ## retreino oficial e reproduzível: regenera sintéticos + 34 adversariais, pipeline em 38 conjuntos, treina em 37 e valida em n3_ood; compara com dados/calibracao.json (GRAVAR=1 grava; CACHE_LLM=saida_llm_q35/cache_llm.jsonl = árbitro real só do cache, treina os caminhos llm:*)
 	$(PYTHON) scripts/calibrar_completo.py $(if $(GRAVAR),--gravar,) $(if $(CACHE_LLM),--cache-llm $(CACHE_LLM),)
 
 comparar-arbitro: ## núcleo × árbitro (ARBITRO=mock|transformers|vllm) em todos os conjuntos, com a métrica oficial: Δscore, τ, precisão do extrator e VEREDITO (ADR 0003)
@@ -93,7 +93,7 @@ docker-rodar:     ## contrato de execução da organização, tal qual será rod
 # commit dos pesos: MODELO_REVISAO=<commit>, senão a revisão fixa versionada (modelos/revisao_fixa.env)
 MODELO_REVISAO ?= $(shell sed -n 's/^export CACA_MODELO_REVISAO="\([0-9a-f]*\)".*/\1/p' modelos/revisao_fixa.env)
 docker-digests:   ## imprime os digests das imagens-base para fixar em FROM …@sha256:… (exige acesso ao registry; R3b-07)
-	@for img in python:3.12-slim pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime; do \
+	@for img in python:3.12-slim pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime; do \
 	  docker pull -q $$img >/dev/null && docker inspect --format='FROM {{index .RepoDigests 0}}   # '$$img $$img; done
 
 docker-llm:       ## imagem com CUDA para o árbitro LLM (exige o commit dos pesos; ver Dockerfile.llm)

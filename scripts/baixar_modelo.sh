@@ -9,8 +9,8 @@
 # Uso:
 #   bash scripts/baixar_modelo.sh                       # modelo e revisão FIXOS de modelos/revisao_fixa.env (MANIFESTO_MODELO.md)
 #   bash scripts/baixar_modelo.sh -r <commit_hash>      # revisão fixa (o que o bundle final deve usar)
-#   bash scripts/baixar_modelo.sh -m Qwen/Qwen2.5-7B-Instruct-AWQ -r <hash>   # variante quantizada oficial
-#   bash scripts/baixar_modelo.sh --sha256              # também calcula SHA-256 de cada arquivo (lento: ~15 GB)
+#   bash scripts/baixar_modelo.sh -m Qwen/Qwen2.5-7B-Instruct -r a09a35458c702b33eeacc393d103063234e8bc28   # alternativa medida (v1.0-1.2.5)
+#   bash scripts/baixar_modelo.sh --sha256              # também calcula SHA-256 de cada arquivo (lento: ~18 GB)
 #
 # Variáveis: HF_HOME (padrão: $PWD/modelos/hf), HF_TOKEN (não é necessário: o repositório é público).
 # Depois: exporte CACA_MODELO_REVISAO=<commit> (ou use o .env gerado em modelos/modelo.env).
@@ -20,7 +20,7 @@ RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Padrão: a revisão FIXA versionada (modelos/revisao_fixa.env); -r/CACA_MODELO_REVISAO sobrescrevem.
 FIXA_MODELO="$(sed -n 's/^export CACA_MODELO="\([^"]*\)".*/\1/p' "$RAIZ/modelos/revisao_fixa.env" 2>/dev/null || true)"
 FIXA_REVISAO="$(sed -n 's/^export CACA_MODELO_REVISAO="\([^"]*\)".*/\1/p' "$RAIZ/modelos/revisao_fixa.env" 2>/dev/null || true)"
-MODELO="${CACA_MODELO:-${FIXA_MODELO:-Qwen/Qwen2.5-7B-Instruct}}"
+MODELO="${CACA_MODELO:-${FIXA_MODELO:-Qwen/Qwen3.5-9B}}"
 REVISAO="${CACA_MODELO_REVISAO:-${FIXA_REVISAO:-main}}"
 CALCULAR_SHA=0
 export HF_HOME="${HF_HOME:-$RAIZ/modelos/hf}"

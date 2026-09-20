@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Medição do árbitro LLM com o modelo REAL, na GPU local, em um comando (ADR 0003, padrão ouro).
 
-    python scripts/rodar_llm_local.py                       # Qwen2.5-7B-Instruct na revisão fixa (baixa se faltar)
+    python scripts/rodar_llm_local.py                       # modelo da revisão fixa (Qwen3.5-9B NF4; baixa se faltar)
     python scripts/rodar_llm_local.py --modelo /opt/bracis/models/<snapshot>   # snapshot local (teste de fumaça)
     python scripts/rodar_llm_local.py --rapido              # só os conjuntos-chave (≈ 500 chamadas)
     python scripts/rodar_llm_local.py --completo            # todos os conjuntos (≈ 2.000 chamadas; horas)
-    # outro modelo, quantizado em NF4, com o nome canônico e o commit nas chaves do cache:
+    # snapshot local do modelo fixo, com o nome canônico e o commit nas chaves do cache (scripts/rodar_llm_q35_wsl.cmd):
     python scripts/rodar_llm_local.py --modelo /opt/bracis/models/qwen35_9b --id Qwen/Qwen3.5-9B \\
         --revisao <commit> --quatro-bits --saida saida_llm_q35
+    # a alternativa medida (Qwen2.5-7B-Instruct bf16, medições 1 e 2):
+    python scripts/rodar_llm_local.py --modelo Qwen/Qwen2.5-7B-Instruct --revisao a09a35458c702b33eeacc393d103063234e8bc28
 
 Etapas (cada uma grava o que produz em ``--saida``, padrão ``saida_llm/``):
 
@@ -61,8 +63,9 @@ def rodar(cmd: list[str], env_extra: dict[str, str] | None = None, capturar: boo
                           capture_output=capturar, check=False)
 
 
-def revisao_fixa() -> tuple[str, str]:
-    modelo, rev = "Qwen/Qwen2.5-7B-Instruct", ""
+def revisao_fixa() -> tuple[str, str, bool]:
+    """``(CACA_MODELO, CACA_MODELO_REVISAO, CACA_LLM_4BIT)`` de ``modelos/revisao_fixa.env``."""
+    modelo, rev, nf4 = "Qwen/Qwen3.5-9B", "", False
     arq = RAIZ / "modelos" / "revisao_fixa.env"
     if arq.exists():
         for linha in arq.read_text(encoding="utf-8").splitlines():
@@ -70,7 +73,9 @@ def revisao_fixa() -> tuple[str, str]:
                 modelo = linha.split('"')[1]
             if linha.startswith('export CACA_MODELO_REVISAO="'):
                 rev = linha.split('"')[1]
-    return modelo, rev
+            if linha.startswith('export CACA_LLM_4BIT="'):
+                nf4 = linha.split('"')[1].strip().lower() in ("1", "true", "sim", "yes", "on")
+    return modelo, rev, nf4
 
 
 def hf_home_padrao() -> Path:
@@ -143,7 +148,7 @@ def etapa_pesos(modelo: str, revisao: str, saida: Path, revisao_local: str = "",
     hf_home.mkdir(parents=True, exist_ok=True)
     os.environ["HF_HOME"] = str(hf_home)
     from huggingface_hub import snapshot_download  # noqa: WPS433
-    print(f"pesos: {modelo}@{revisao or 'main'} em {hf_home} (baixando se faltar; ≈ 15 GB)…", flush=True)
+    print(f"pesos: {modelo}@{revisao or 'main'} em {hf_home} (baixando se faltar; ≈ 15–18 GB)…", flush=True)
     t = time.time()
     pasta = Path(snapshot_download(modelo, revision=revisao or None))
     commit = pasta.name
@@ -207,10 +212,14 @@ def main() -> int:
     if not info.get("cuda_disponivel"):
         print("ERRO: torch com CUDA indisponível neste Python; use o venv com GPU (ver README §LLM)", file=sys.stderr)
         return 2
-    modelo_fixo, rev_fixa = revisao_fixa()
+    modelo_fixo, rev_fixa, nf4_fixo = revisao_fixa()
     if args.id and not args.revisao:
         print("ERRO: --id exige --revisao (o commit dos pesos é o que torna a chave do cache reproduzível)", file=sys.stderr)
         return 2
+    # NF4: --quatro-bits força; sem a opção vale a revisão fixa (CACA_LLM_4BIT do .env) quando o modelo é o
+    # fixo ou o --id aponta para ele — outro modelo sem --quatro-bits roda em bf16
+    if not args.quatro_bits and nf4_fixo and (args.modelo in (None, modelo_fixo) or args.id == modelo_fixo):
+        args.quatro_bits = True
     modelo, revisao, _pasta = etapa_pesos(args.modelo or modelo_fixo, args.revisao if args.revisao is not None else rev_fixa,
                                           args.saida, revisao_local=args.revisao or "", modelo_id=args.id or "",
                                           quatro_bits=args.quatro_bits)

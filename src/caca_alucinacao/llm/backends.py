@@ -3,9 +3,10 @@
 * :class:`MockArbitro` responde sem modelo, com heurísticas determinísticas,
   passando pelo **mesmo** caminho de parsing/validação/cache dos backends reais
   (as respostas são JSON em texto). Serve aos testes e como fallback.
-* :class:`TransformersArbitro` carrega ``Qwen/Qwen2.5-7B-Instruct`` (ou o
-  modelo de ``CACA_MODELO``) com ``transformers`` em bf16 — ou NF4 (bitsandbytes)
-  com ``CACA_LLM_4BIT=1`` —, decodificação **greedy** (``do_sample=False``),
+* :class:`TransformersArbitro` carrega ``Qwen/Qwen3.5-9B`` (revisão fixa em
+  ``modelos/revisao_fixa.env``; ou o modelo de ``CACA_MODELO``) com ``transformers``
+  em bf16 — ou NF4 (bitsandbytes) com ``CACA_LLM_4BIT=1``, o padrão desde a v1.3.0 —,
+  decodificação **greedy** (``do_sample=False``),
   ``max_new_tokens`` pequeno, *chat template* oficial, semente fixa e limite de
   VRAM por processo (``torch.cuda.set_per_process_memory_fraction``) para nunca
   ultrapassar 24 GB numa GPU maior (RTX 5090 = 32 GB). A família do modelo vem
@@ -53,7 +54,8 @@ except ImportError:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-MODELO_PADRAO = "Qwen/Qwen2.5-7B-Instruct"
+MODELO_PADRAO = "Qwen/Qwen3.5-9B"              # v1.3.0 (ADR 0003 "Medição 3"); NF4 via CACA_LLM_4BIT=1
+MODELO_ANTERIOR = "Qwen/Qwen2.5-7B-Instruct"   # medições 1 e 2 (bf16)
 MODELO_AWQ = "Qwen/Qwen2.5-7B-Instruct-AWQ"
 LIMITE_VRAM_GB_PADRAO = 24.0
 SEMENTE_PADRAO = 1234
@@ -448,7 +450,7 @@ def _familia(arquitetura: str) -> str:
 # transformers
 # ---------------------------------------------------------------------------
 class TransformersArbitro(ArbitroBase):
-    """Qwen2.5-7B-Instruct (ou outro Qwen, ver ``_familia``) via ``transformers`` (bf16 ou NF4), greedy, com lote."""
+    """Qwen3.5-9B (ou Qwen2.5-7B-Instruct; ver ``_familia``) via ``transformers`` (NF4 ou bf16), greedy, com lote."""
 
     nome = "transformers"
 
@@ -605,7 +607,7 @@ class TransformersArbitro(ArbitroBase):
 # vLLM
 # ---------------------------------------------------------------------------
 class VLLMArbitro(ArbitroBase):
-    """Qwen2.5-7B-Instruct via vLLM (opcional), ``temperature=0``, JSON guiado quando possível."""
+    """Árbitro via vLLM (opcional; medido só com o Qwen2.5-7B-Instruct), ``temperature=0``, JSON guiado quando possível."""
 
     nome = "vllm"
 
@@ -774,5 +776,5 @@ def obter_arbitro(nome: str | None, **cfg: Any) -> ArbitroBase | None:
 
 __all__ = [
     "MockArbitro", "TransformersArbitro", "VLLMArbitro", "obter_arbitro", "BACKENDS",
-    "MODELO_PADRAO", "MODELO_AWQ", "LIMITE_VRAM_GB_PADRAO", "SEMENTE_PADRAO",
+    "MODELO_PADRAO", "MODELO_ANTERIOR", "MODELO_AWQ", "LIMITE_VRAM_GB_PADRAO", "SEMENTE_PADRAO",
 ]

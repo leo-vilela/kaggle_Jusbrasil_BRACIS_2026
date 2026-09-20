@@ -1,6 +1,7 @@
-# ADR 0003 — Árbitro LLM residual (Qwen2.5-7B-Instruct, pesos abertos)
+# ADR 0003 — Árbitro LLM residual (Qwen, pesos abertos, sem fine-tuning)
 
-Data: 16/09/2026. Estado: aceita; árbitro **ligado** desde 20/09/2026 (medição 2 com o Qwen real, abaixo).
+Data: 16/09/2026. Estado: aceita; árbitro **ligado** desde 20/09/2026 (medição 2 com o Qwen real, abaixo);
+modelo **Qwen3.5-9B em NF4** desde a v1.3.0 (medição 3; Qwen2.5-7B-Instruct bf16 nas medições 1 e 2).
 Escopo: `src/caca_alucinacao/llm/` (`arbitro.py`, `prompts.py`, `backends.py`, `cache.py`),
 `tests/test_llm.py`, `scripts/{baixar_modelo.sh,limitar_gpu.ps1,avaliar_arbitro.py}`,
 `MANIFESTO_MODELO.md`.
@@ -41,7 +42,7 @@ semântica.
    até o documento (ADR 0002: exceção numa citação a omite; aqui nem isso acontece — o caminho
    determinístico segue). O Protocol `Arbitro` e a classe base `ArbitroBase` concentram
    parsing, validação e cache; backends só implementam `_gerar(pedidos) -> list[str]`.
-3. **`Qwen/Qwen2.5-7B-Instruct`, revisão fixa, sem fine-tuning.** Motivos: pesos abertos com
+3. **`Qwen/Qwen2.5-7B-Instruct`, revisão fixa, sem fine-tuning** (decisão original; substituído pelo Qwen3.5-9B NF4 na v1.3.0, ver "Medição 3"). Motivos: pesos abertos com
    licença Apache-2.0 (sem cláusulas de uso); 7B em bf16 (≈ 15,2 GB) cabe com folga nos 24 GB
    com KV cache; treinado com bastante português e JSON estruturado (segue instruções de
    "só JSON" com confiabilidade alta em modelos instruct da família); disponível também em
@@ -251,7 +252,7 @@ conjunto regenerado muda só nesse documento; a tabela acima é a medida no conj
 Consequências: o árbitro fica **ligado** na imagem de submissão (`Dockerfile.llm`) e na rodada do
 conjunto cego; no dev a saída é a mesma do núcleo, então a submissão de referência não muda. A
 reprodução da submissão com o árbitro é `make reproduzir ARBITRO=transformers
-CACHE_LLM=saida_llm/cache_llm.jsonl` (`reproduzir.py --arbitro --cache-llm`): o pipeline roda 2×
+CACHE_LLM=saida_llm/cache_llm.jsonl` (`reproduzir.py --arbitro --cache-llm`; desde a v1.3.0, com o Qwen3.5, `saida_llm_q35/cache_llm.jsonl`): o pipeline roda 2×
 só do cache exportado (`CACA_LLM_SOMENTE_CACHE=1`), com zero chamadas ao modelo, e o CSV bate byte a
 byte — 5 s, sem torch. O `cache_llm.jsonl` contém janelas dos documentos e por isso **não é
 versionado**: acompanha a submissão como `dados/`. Para o cego, a estratégia é rodar núcleo e
@@ -334,7 +335,24 @@ Balanço: nos documentos reais os dois modelos produzem **a mesma saída** (0 em
 distratores); a diferença só aparece nas formas que o regex não cobre, onde o Qwen3.5 recupera mais
 (69 × 67) sem erro após a correção do validador. O que a troca custa: transformers ≥ 5.16 + bitsandbytes
 na imagem de submissão (`Dockerfile.llm` hoje pina transformers 4.51.3 sobre torch 2.7.1) e o dobro do
-tempo por janela. Decisão de adoção registrada abaixo, quando tomada.
+tempo por janela.
+
+**Decisão (20/09/2026, v1.3.0): o Qwen3.5-9B em NF4 passa a ser o árbitro padrão.** Passou nos
+quatro critérios, ficou ≥ o Qwen2.5 em todos os conjuntos (idêntico em 8, melhor no nono) e dentro do
+envelope; a única extração errada era brecha do validador, fechada e coberta por teste. O que mudou
+com a adoção: `modelos/revisao_fixa.env` (`Qwen/Qwen3.5-9B@c202236…`, `CACA_LLM_4BIT=1` — a
+quantização entra na chave do cache, e `reproduzir.py`/`calibrar_completo.py` a leem do .env);
+`Dockerfile.llm` sobre `pytorch/pytorch:2.11.0-cuda12.8-cudnn9-runtime` com `requirements-llm.txt`
+pinado em transformers 5.16.1 + bitsandbytes 0.50.2 (o ambiente da medição); `MANIFESTO_MODELO.md`;
+`dados/calibracao.json` retreinada com o cache da medição 3 (`calibrar_completo.py --cache-llm
+saida_llm_q35/cache_llm.jsonl`: 69 extrações reais, holdout 51/51 com Brier 0,0329 → 0,0044; só dois
+caminhos `llm:*` mudam em relação à tabela treinada com o Qwen2.5). Estado final, tudo só do cache
+(`reproduzir.py --arbitro transformers --cache-llm saida_llm_q35/cache_llm.jsonl`): dev 1,10000 com a
+`submission.csv` idêntica à do núcleo (`a5f6b066…`) e à gerada na 5090; `r6_extrator_formas` **1,09983**
+(69/69); os outros 7 conjuntos idênticos ao núcleo. O Qwen2.5 fica documentado como alternativa medida
+(MANIFESTO): `CACA_MODELO=Qwen/Qwen2.5-7B-Instruct CACA_MODELO_REVISAO=a09a354… CACA_LLM_4BIT=` com o
+`saida_llm/cache_llm.jsonl` da medição 2. Para o conjunto cego a estratégia não muda: núcleo e núcleo +
+árbitro, os dois CSVs enviados e selecionados.
 
 ## Revisão da rodada 4 (20/09) — o árbitro é residual POR DESENHO (R3q-10)
 

@@ -4,7 +4,7 @@
                                                         # e compara com dados/calibracao.json (não sobrescreve)
     python scripts/calibrar_completo.py --gravar        # idem, e grava em dados/calibracao.json
     python scripts/calibrar_completo.py --sem-gerar     # reaproveita dados/sinteticos e dados/adversarial existentes
-    python scripts/calibrar_completo.py --cache-llm saida_llm/cache_llm.jsonl   # com o árbitro real, só do cache
+    python scripts/calibrar_completo.py --cache-llm saida_llm_q35/cache_llm.jsonl   # com o árbitro real, só do cache
 
 O que ele faz, na ordem:
 
@@ -87,15 +87,16 @@ def sha256(caminho: Path) -> str:
 
 
 def ambiente_cache_llm(cache_llm: Path, pasta_cache: Path) -> dict[str, str]:
-    """Variáveis para o pipeline rodar o árbitro **só do cache** (como ``scripts/reproduzir.py``): modelo e
-    revisão fixa de ``modelos/revisao_fixa.env`` (a chave do cache inclui os dois), ``CACA_LLM_SOMENTE_CACHE=1``,
-    ``CACA_LLM_CACHE_IMPORTAR=<jsonl>`` e um SQLite próprio por execução (fora do repositório)."""
+    """Variáveis para o pipeline rodar o árbitro **só do cache** (como ``scripts/reproduzir.py``): modelo,
+    revisão fixa e quantização de ``modelos/revisao_fixa.env`` (a chave do cache inclui os três),
+    ``CACA_LLM_SOMENTE_CACHE=1``, ``CACA_LLM_CACHE_IMPORTAR=<jsonl>`` e um SQLite próprio por execução (fora do
+    repositório)."""
     env: dict[str, str] = {}
     fixo = RAIZ / "modelos" / "revisao_fixa.env"
     if fixo.exists():
         for linha in fixo.read_text(encoding="utf-8").splitlines():
-            m = re.match(r'\s*export\s+(CACA_MODELO|CACA_MODELO_REVISAO)="([^"]*)"', linha)
-            if m and not os.environ.get(m.group(1)):
+            m = re.match(r'\s*export\s+(CACA_MODELO|CACA_MODELO_REVISAO|CACA_LLM_4BIT)="([^"]*)"', linha)
+            if m and os.environ.get(m.group(1)) is None:
                 env[m.group(1)] = m.group(2)
     env["CACA_LLM_SOMENTE_CACHE"] = "1"
     env["CACA_LLM_CACHE_IMPORTAR"] = str(cache_llm.resolve())
@@ -271,6 +272,7 @@ def main() -> int:
         conteudo["meta"]["cache_llm"] = {"arquivo": args.cache_llm.name, "sha256": sha256(args.cache_llm),
                                          "modelo": env_llm.get("CACA_MODELO", os.environ.get("CACA_MODELO", "")),
                                          "revisao": env_llm.get("CACA_MODELO_REVISAO", os.environ.get("CACA_MODELO_REVISAO", "")),
+                                         "quatro_bits": env_llm.get("CACA_LLM_4BIT", os.environ.get("CACA_LLM_4BIT", "")) in ("1", "true", "sim", "yes", "on"),
                                          "extracoes_por_conjunto": llm_emitidas}
         if holdout is not None:
             conteudo["meta"]["holdout_llm"] = holdout
