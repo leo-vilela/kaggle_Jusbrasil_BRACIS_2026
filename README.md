@@ -277,14 +277,19 @@ make docker-digests                       # fixa as imagens-base por digest (exi
 
 ### 5. Kaggle
 1. Envie `submission.csv` em **Submit Prediction** (o Kaggle aceita só o CSV; limite de 5 envios/dia por equipe).
-2. Quando o conjunto cego for publicado na aba Data: coloque os `.txt` em `dados/cego/txt` e rode
-   as **duas** versões — núcleo (`make rodar ENTRADA=dados/cego/txt SAIDA=saida_cego`) e núcleo +
-   árbitro (`scripts\rodar_llm_wsl.cmd` / `make rodar ARBITRO=transformers ENTRADA=dados/cego/txt
-   SAIDA=saida_cego_llm`, que também exporta o cache) — e gere um CSV de cada com
-   `python scripts/gerar_submissao.py --saida <pasta> --destino <csv> --sample <sample_submission do cego>`.
+2. Quando o conjunto cego for publicado na aba Data: coloque os `.txt` em `dados/cego/txt` e o
+   `sample_submission.csv` do cego em `dados/cego/`, e rode **`scripts\rodar_cego_wsl.cmd`** (um clique;
+   `python scripts/rodar_cego.py` no WSL/Linux): ele roda as **duas** versões — núcleo (`saida_cego/`)
+   e núcleo + árbitro (`saida_cego_llm/`, Qwen3.5-9B NF4 do snapshot local, cache exportado em
+   `saida_cego_llm/cache_llm.jsonl`) —, gera e valida `submission_cego_nucleo.csv` e
+   `submission_cego_llm.csv` (conversor oficial, `--sample` do cego, zip dos JSONs) e imprime o tempo por
+   documento (envelope 60 s), as citações por classe e em quantos documentos os dois CSVs diferem
+   (`saida_cego\log.txt`). Equivalente à mão: `make rodar ENTRADA=dados/cego/txt SAIDA=saida_cego` e
+   `make rodar ARBITRO=transformers …` + `scripts/gerar_submissao.py --sample <sample do cego>`.
 3. Envie os dois CSVs e marque **os dois** em *Submissions → Select* antes de 30/09/2026 23h59 (BRT):
    o Kaggle conta a melhor das selecionadas no placar privado, então ligar o árbitro nunca rebaixa.
-   O bundle reproduz os dois (o do árbitro pelo `cache_llm.jsonl` do cego, sem GPU).
+   O bundle reproduz os dois (o do árbitro pelo `cache_llm.jsonl` do cego, sem GPU:
+   `reproduzir.py --entrada dados/cego/txt --arbitro transformers --cache-llm saida_cego_llm/cache_llm.jsonl`).
 
 ## Política de dados
 
