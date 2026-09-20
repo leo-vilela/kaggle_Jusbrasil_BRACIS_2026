@@ -60,6 +60,9 @@ WORKDIR /app
 # Versões pinadas (==) em requirements-llm.txt; `pip freeze > requirements-llm.lock` no build
 # de referência serve de lock para a verificação de reprodutibilidade.
 COPY requirements-llm.txt /app/
+# A base 2.11 usa o Python 3.12 do sistema (PEP 668: pip recusa instalar sem esta variável); o torch da imagem
+# está nesse mesmo interpretador, então os pacotes vão para o site-packages certo.
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 RUN pip install --no-cache-dir -r requirements-llm.txt && pip freeze > /app/requirements-llm.lock
 
 COPY pyproject.toml README.md MANIFESTO_MODELO.md /app/
