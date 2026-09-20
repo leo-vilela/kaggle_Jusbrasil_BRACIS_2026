@@ -20,8 +20,10 @@ Conjuntos (12 docs cada):
   r6_extrator_distratores  N1: janelas cheias de pistas sem citação nenhuma — ``Processo nº <CNJ>``,
                            ``Ministro X afirmou``, ``art. 5º do contrato``, ``Lei nº 8.078/90`` sem artigo,
                            ``Tema 3: Da prescrição``, ``acórdão nº N`` sem classe, ``REsp.`` sem número,
-                           datas/valores/percentuais, ``nº`` de ofício/protocolo — mais poucas citações
-                           normais (controle). Mede a PRECISÃO do extrator: qualquer acréscimo é FP.
+                           datas/valores/percentuais, ``nº`` de ofício/protocolo, e as formas que o Qwen
+                           real propôs em 20/09 (Súmula Administrativa/AGU, OJ/SBDI, Apólice/Matrícula/
+                           Certidão nº, Enunciado de Jornada/FONAJE) — mais poucas citações normais
+                           (controle). Mede a PRECISÃO do extrator: qualquer acréscimo é FP.
 """
 from __future__ import annotations
 
@@ -201,9 +203,14 @@ def conjunto_extrator_distratores(am: Amostra, rng: random.Random) -> list[Doc]:
             f"Segundo o relator, Ministro {nome}, o precedente firmado no ano de {rng.randint(2015, 2024)} pelo Supremo Tribunal Federal não se aplica. ",
             f"O Tribunal Superior do Trabalho, em {rng.randint(2015, 2024)}, pacificou a questão em súmula própria, sem número indicado no recurso. ",
             f"Súmula de jurisprudência dominante, verbete sem numeração, e enunciado administrativo nº {rng.randint(2, 30)} da Corregedoria. ",
+            # formas que o Qwen real (medição de 20/09) propôs como citação e que não são:
+            f"A Súmula Administrativa nº {rng.randint(2, 80)} da AGU e a Súmula AGU nº {rng.randint(2, 80)} vinculam a Administração. ",
+            f"A OJ {rng.randint(100, 420)} da SBDI-1 do TST e a Orientação Jurisprudencial nº {rng.randint(100, 420)} da SDI-1 orientam a matéria. ",
+            f"A Apólice nº {rng.randint(1000000, 9999999)}, a Matrícula nº {rng.randint(10000, 99999)} do 1º CRI e a Certidão nº {rng.randint(100000, 999999)} instruem o pedido. ",
+            f"O Enunciado {rng.randint(2, 600)} da IV Jornada de Direito Civil do CJF e o Enunciado nº {rng.randint(2, 200)} do FONAJE não se aplicam. ",
         ]
         rng.shuffle(pistas)
-        for f in pistas[:8]:
+        for f in pistas[:10]:
             doc.add(f)
             if rng.random() < 0.5:
                 enchimento(doc, rng, 1)

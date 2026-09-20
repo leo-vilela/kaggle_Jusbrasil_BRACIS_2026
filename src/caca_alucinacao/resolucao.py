@@ -786,16 +786,25 @@ def _resolver_processo(achado: Achado, base: BaseCanonica, arbitro: Any, context
                     # uma alternativa de OCR), também sem dono: nenhuma informação nova — a decisão
                     # e a confiança calibrada são as do núcleo (ocr_sem_dono/ocr_ambiguo)
                     detalhes["llm"] = "confirmou"
+                elif not cands:
+                    # chave nova, mas também sem dono: o modelo não achou um registro — a decisão e a
+                    # confiança continuam as do núcleo (medido em 20/09 com o Qwen real: rebaixar para
+                    # ``llm_normalizou:0cand`` custava Brier sem mudar nenhuma classe)
+                    detalhes["llm"] = "normalizou_sem_dono"
+                    detalhes["digitos_llm"] = nova.digitos
                 else:
-                    detalhes["llm"] = "normalizou"
                     prefixo = "processo:llm_normalizou"
-                    if not cands:
-                        return _decisao("inventada", None, f"{prefixo}:0cand", (), detalhes)
-                    cit = nova
-                    detalhes.update({"digitos": cit.digitos, "formato": cit.formato,
-                                     "cadeia_citada": " ".join(cit.cadeia), "uf": cit.uf or "",
-                                     "tribunal": cit.tribunal or ""})
-                    return _decidir_entre_candidatos(achado, cit, cands, base, arbitro, contexto, prefixo, detalhes)
+                    detalhes_llm = dict(detalhes, llm="normalizou", digitos=nova.digitos, formato=nova.formato,
+                                        cadeia_citada=" ".join(nova.cadeia), uf=nova.uf or "", tribunal=nova.tribunal or "")
+                    decisao_llm = _decidir_entre_candidatos(achado, nova, cands, base, arbitro, contexto, prefixo, detalhes_llm)
+                    if decisao_llm.classificacao == "real":
+                        # o modelo ancorou a citação num registro da base compatível: única situação em
+                        # que a normalização do árbitro muda a decisão (padrão ouro, ADR 0003)
+                        return decisao_llm
+                    # candidato(s) incompatível(is) (tribunal/UF/classe): nenhuma âncora — vale o núcleo
+                    detalhes["llm"] = "candidato_rejeitado"
+                    detalhes["digitos_llm"] = nova.digitos
+                    detalhes["caminho_llm_rejeitado"] = decisao_llm.caminho
         if detalhes.get("ocr_reparo") == "sem_dono":
             # todas as letras foram convertidas (mapa inverso do gerador) e a chave não tem dono:
             # tão inventada quanto um 0cand limpo, com uma chave calibrada própria

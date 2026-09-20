@@ -172,6 +172,57 @@ real** (`scripts/rodar_llm_local.py` na RTX 5090: ambiente, pesos na revisão fi
 `comparar_arbitro --arbitro transformers`, dev com árbitro, exportação do cache) é o passo que
 decide de fato — o mock não mede a precisão do Qwen.
 
+**Medição 1 com o modelo real** (20/09, RTX 5090, `scripts/rodar_llm_wsl.cmd`; Qwen2.5-7B-Instruct
+`a09a354…`, bf16, greedy; prompt `2026-09-20.1`; 9 conjuntos, 550 chamadas, ≈ 20–40 s/doc):
+
+| conjunto | núcleo | árbitro | Δ | LLM emitiu (certas) |
+|---|---|---|---|---|
+| dev | 1,10000 (1,0999960) | idêntico | 0 | 0 (0) |
+| n3_ood, r5_processos_ocr_combo, ruido_n2, vagas | — | idênticos | 0 | 0 (0) |
+| r2_chave_parcial | 1,09998 | 1,09843 | −0,00155 | 0 (0) — normalização rebaixou confiança |
+| r5_distratores_orgaos | 1,02667 | 0,97778 | −0,04889 | 6 (0) — FPs |
+| r6_extrator_distratores | 1,10000 | 1,10000 | 0 | 3 (0) — FPs sem custo (spans fora do gabarito) |
+| r6_extrator_formas | 0,59657 | 1,01414 | +0,41756 | 71 (62), τ = 0 |
+
+Veredito do critério: **MANTER DESLIGADO** (critérios a e c violados). O dev ficou idêntico e
+`inventada→real` nunca subiu — o padrão ouro segurou o modelo onde importa — mas a validação
+literal de então deixava passar o que o Qwen "batizava": `Apólice nº 1234567` como `AP`,
+`Processo nº <CNJ>` como `APL`/`RESP`/`RCL`, `acórdão nº N` como `RRAG`, `Súmula Administrativa
+da AGU`, `OJ da SBDI-1`; e para `agravo em recurso especial` devolveu `RESP`, para `Re curso
+Especial` devolveu `RESE`, para `Sún1ula 211 do STJ` devolveu tribunal `TST`. Regras acrescentadas
+(v1.2.1, `arbitro.validar_extracao`), todas deterministas e provadas no texto:
+
+* **a classe tem de estar escrita no span**: as letras do span sem o número (dígitos de OCR
+  revertidos, `RE5p` → `resp`) têm de ser exatamente um apelido da cadeia devolvida, com
+  `processo/autos/nº/de número` antes e `/UF`, `oriundo de <estado>` depois; se o texto escreve
+  **uma única** cadeia conhecida diferente da devolvida, vale o texto (`agravo em recurso
+  especial` → `ARESP`); se nenhuma ou mais de uma, a proposta cai;
+* a UF pode vir do **nome do estado** escrito no fim do span (`oriundo de Rio Grande do Sul` → `RS`;
+  só correspondência exata com `ESTADOS`);
+* o **tribunal da súmula é o escrito no span** (sigla ou por extenso); sem tribunal escrito, a
+  súmula fica sem tribunal — o modelo não pode inventá-lo;
+* listas de distratores por família: súmula (`administrativa`, `AGU`, `OJ`, `SBDI`, `jornada`,
+  `CJF`, `TNU`, `CARF`, conselhos/corregedorias…) e dispositivo (`contrato`, `estatuto social`,
+  `regimento`, `edital`, `apólice`, `cláusula`…);
+* o **relator** de uma citação vaga tem de vir no span depois de uma pista (`Rel.`, `relator`,
+  `relatoria d[ae]`, `Rel. Min.`) e não pode ser um órgão (o modelo devolveu `Supremo Tribunal
+  Federal` como relator de `precedente firmado no ano de 2022 pelo Supremo Tribunal Federal`);
+* o prompt passa a **mascarar** as citações já detectadas (`⟦…⟧`), para o modelo não as repetir
+  (a validação e a chave do cache continuam usando a janela original), e pede a resposta
+  **compacta** (só os campos da família; 19 de 455 respostas da medição 1 estouraram os 480
+  tokens com os 12 campos por citação, a maioria `null`); uma lista **truncada** pelo limite
+  aproveita as propostas completas que vieram antes do corte (`extrair_json_citacoes`) — cada uma
+  é validada sozinha, então a lista parcial é tão segura quanto a inteira;
+* `_resolver_processo`: a normalização do árbitro só muda a decisão quando **ancora** a citação num
+  registro compatível (classe `real`); chave nova sem dono ou candidatos incompatíveis mantêm a
+  decisão e a confiança do núcleo (`normalizou_sem_dono`/`candidato_rejeitado` nos detalhes).
+
+*Replay* determinístico das 455 respostas de extração da medição 1 pelo validador novo
+(`saida_llm/analise/`): 81 propostas aceitas → 65; as 16 que caíram são exatamente as FPs acima
+(mais o span que engolia a frase); as 3 cadeias/tribunal errados foram corrigidos pelo texto; todas
+as 65 restantes estão em `r6_extrator_formas`; as 19 respostas truncadas, recuperadas, acrescentam 0
+propostas aceitas. A medição 2 (prompt `2026-09-20.3`) é o que decide.
+
 **Reprodução sem GPU.** Todas as respostas do modelo ficam em `CACA_CACHE_LLM` (SQLite) e são
 exportadas em JSONL (`cache_llm.jsonl`); com `CACA_LLM_SOMENTE_CACHE=1` e
 `CACA_LLM_CACHE_IMPORTAR=<jsonl>` o backend `transformers`/`vllm` nem carrega o modelo (nem exige

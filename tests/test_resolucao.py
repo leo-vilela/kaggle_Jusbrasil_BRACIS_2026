@@ -428,7 +428,8 @@ class TestProcessoOCR(Base):
                                          "digitos_canonicos": "9999999", "uf": None, "tribunal": None,
                                          "eh_citacao": True})
         d = self.resolver("REsp l.Z34.S68/SP", arbitro=arb)
-        self.assertInventada(d, "processo:llm_normalizou:0cand")
+        self.assertInventada(d, "processo:0cand:ocr_sem_dono")  # chave nova sem dono: vale o núcleo (20/09)
+        self.assertEqual(d.detalhes.get("llm"), "normalizou_sem_dono")
 
     def test_arbitro_diz_que_nao_e_citacao(self) -> None:
         arb = ArbitroFalso(normalizacao={"classe_cadeia": [], "numero_digitos": "", "digitos_canonicos": "",

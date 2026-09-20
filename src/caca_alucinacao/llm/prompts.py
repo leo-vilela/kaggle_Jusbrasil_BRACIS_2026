@@ -21,7 +21,7 @@ import hashlib
 import json
 from typing import Any
 
-PROMPT_VERSAO = "2026-09-20.1"
+PROMPT_VERSAO = "2026-09-20.3"
 
 # Comprimento máximo (codepoints) do contexto enviado ao modelo. A janela é
 # recortada em torno do trecho para caber no orçamento de tokens (≈ 1k).
@@ -164,32 +164,48 @@ def mensagens_classificar(trecho: str, contexto: str) -> list[dict[str, str]]:
 # onde olhar; número, classe, UF, artigo, diploma, ano e relator têm de estar
 # literalmente no span, e a classe (real/inventada/incompleta) vem da base)
 # ---------------------------------------------------------------------------
-_EXTRAIR_INSTRUCOES = """Tarefa: um detector automático já marcou as citações mais comuns da janela abaixo (lista "já detectadas", com offsets relativos à janela). Encontre citações de jurisprudência ou de lei que ele NÃO marcou — formas incomuns, abreviações, palavras quebradas por hífen ou espaço, OCR na palavra (Sún1ula, RE5p, Re curso), número escrito depois de "de número", classe e número colados, citações vagas com órgão julgador. Toda citação de processo precisa de uma classe processual reconhecível (REsp, Rcl, RE, HC, RR…); "acórdão nº" ou "processo nº" sem classe não entram. Não repita nem estenda as já detectadas. Não marque: número dos autos do cabeçalho, protocolo, OAB, fls., R$, datas, percentuais, "jurisprudência pacífica", "esta Corte", leis citadas sem artigo.
-Devolva um JSON: {"citacoes": [ {"trecho": "texto EXATO copiado da janela (caractere a caractere, inclusive quebras)", "familia": "processo|sumula|dispositivo|tema|vaga", "classe_cadeia": [siglas canônicas, só para processo], "numero_digitos": "dígitos do número na ordem, letras de OCR convertidas (processo)", "uf": "duas letras ou null", "tribunal": "STF|STJ|TSE|TST|STM ou null", "numero_sumula": "dígitos ou null", "vinculante": true|false, "artigo": "número do artigo ou null", "diploma": "nome do diploma como está no trecho ou null", "ano": "AAAA ou null", "relator": "nome do relator como está no trecho ou null"} ] }
-Sem nada novo: {"citacoes": []}. Fronteiras: começa na classe/Súmula/art./Tema/julgado/acórdão e termina no último dígito, na UF, no tribunal, no diploma ou no nome do relator; artigo anterior (o, a, no, na, do, da) e pontuação final ficam fora. Cada número, UF, artigo, diploma, ano e nome que você devolver TEM de aparecer literalmente no trecho; nunca complete de memória.
+_EXTRAIR_INSTRUCOES = """Tarefa: um detector automático já marcou as citações mais comuns da janela abaixo — elas aparecem substituídas por ⟦…⟧ e NÃO devem ser devolvidas. Encontre citações de jurisprudência ou de lei que ele NÃO marcou — formas incomuns, abreviações, palavras quebradas por hífen ou espaço, OCR na palavra (Sún1ula, RE5p, Re curso), número escrito depois de "de número", classe e número colados, citações vagas com órgão julgador. Toda citação de processo precisa de uma classe processual reconhecível escrita no trecho (REsp, Rcl, RE, HC, RR…); "acórdão nº", "processo nº", apólice, matrícula, protocolo ou ofício com número não entram. Súmula administrativa, súmula da AGU, OJ/Orientação Jurisprudencial, enunciado de jornada/CJF e cláusula de contrato NÃO são citações. Não marque: número dos autos do cabeçalho, OAB, fls., R$, datas, percentuais, "jurisprudência pacífica", "esta Corte", leis citadas sem artigo. Na maioria das janelas não há nada novo: responda {"citacoes": []} sem hesitar.
+Devolva um JSON compacto, só com os campos da família: {"citacoes": [ {"trecho": "texto EXATO copiado da janela (caractere a caractere, inclusive quebras)", "familia": "processo|sumula|dispositivo|tema|vaga", ...campos da família} ] }
+Campos por família — processo: "classe_cadeia" (lista de siglas canônicas), "numero_digitos" (dígitos do número na ordem, letras de OCR convertidas), "uf" (duas letras, só se estiver no trecho), "tribunal" (STF|STJ|TSE|TST|STM ou omita); sumula: "numero_sumula" (dígitos), "tribunal", "vinculante" (true|false); dispositivo: "artigo" (número), "diploma" (nome como está no trecho); tema: "numero_digitos", "tribunal"; vaga: "tribunal", "ano" (AAAA), "relator" (nome como está no trecho). Omita campos vazios ou nulos.
+Fronteiras: começa na classe/Súmula/art./Tema/julgado/acórdão e termina no último dígito, na UF, no tribunal, no diploma ou no nome do relator; artigo anterior (o, a, no, na, do, da) e pontuação final ficam fora. Cada número, UF, artigo, diploma, ano e nome que você devolver TEM de aparecer literalmente no trecho; nunca complete de memória.
 
 Exemplos:
-Janela: "como se vê no REsp1.234.567/SP, que afastou a tese, e na Súmula 7 do STJ."
-Já detectadas: [{"inicio": 55, "fim": 71, "trecho": "Súmula 7 do STJ"}]
-Resposta: {"citacoes": [{"trecho": "REsp1.234.567/SP", "familia": "processo", "classe_cadeia": ["RESP"], "numero_digitos": "1234567", "uf": "SP", "tribunal": "STJ", "numero_sumula": null, "vinculante": false, "artigo": null, "diploma": null, "ano": null, "relator": null}]}
+Janela: "como se vê no REsp1.234.567/SP, que afastou a tese, e na ⟦…⟧."
+Resposta: {"citacoes": [{"trecho": "REsp1.234.567/SP", "familia": "processo", "classe_cadeia": ["RESP"], "numero_digitos": "1234567", "uf": "SP", "tribunal": "STJ"}]}
 Janela: "conforme decidido no julgamento do recurso especial de número 2.OO0.111, oriundo do Paraná, e na Recla-\nmação 45.678/SP"
-Já detectadas: []
-Resposta: {"citacoes": [{"trecho": "recurso especial de número 2.OO0.111", "familia": "processo", "classe_cadeia": ["RESP"], "numero_digitos": "2000111", "uf": null, "tribunal": "STJ", "numero_sumula": null, "vinculante": false, "artigo": null, "diploma": null, "ano": null, "relator": null}, {"trecho": "Recla-\nmação 45.678/SP", "familia": "processo", "classe_cadeia": ["RCL"], "numero_digitos": "45678", "uf": "SP", "tribunal": null, "numero_sumula": null, "vinculante": false, "artigo": null, "diploma": null, "ano": null, "relator": null}]}
+Resposta: {"citacoes": [{"trecho": "recurso especial de número 2.OO0.111", "familia": "processo", "classe_cadeia": ["RESP"], "numero_digitos": "2000111", "tribunal": "STJ"}, {"trecho": "Recla-\nmação 45.678/SP", "familia": "processo", "classe_cadeia": ["RCL"], "numero_digitos": "45678", "uf": "SP"}]}
 Janela: "Aplica-se a Sún1ula 4l2 do TST e o art. 8O2 do Código Civil, conforme julgado pela 3ª Turma do STJ em 2020, relatoria da Ministra Beltrana Souza."
-Já detectadas: []
-Resposta: {"citacoes": [{"trecho": "Sún1ula 4l2 do TST", "familia": "sumula", "classe_cadeia": [], "numero_digitos": null, "uf": null, "tribunal": "TST", "numero_sumula": "412", "vinculante": false, "artigo": null, "diploma": null, "ano": null, "relator": null}, {"trecho": "art. 8O2 do Código Civil", "familia": "dispositivo", "classe_cadeia": [], "numero_digitos": null, "uf": null, "tribunal": null, "numero_sumula": null, "vinculante": false, "artigo": "802", "diploma": "Código Civil", "ano": null, "relator": null}, {"trecho": "julgado pela 3ª Turma do STJ em 2020, relatoria da Ministra Beltrana Souza", "familia": "vaga", "classe_cadeia": [], "numero_digitos": null, "uf": null, "tribunal": "STJ", "numero_sumula": null, "vinculante": false, "artigo": null, "diploma": null, "ano": "2020", "relator": "Beltrana Souza"}]}
-Janela: "conforme consta às fls. 45/52 dos autos, a jurisprudência pacífica desta Corte não socorre o recorrente (Processo nº 0001234-56.2020.8.26.0100)."
-Já detectadas: []
+Resposta: {"citacoes": [{"trecho": "Sún1ula 4l2 do TST", "familia": "sumula", "numero_sumula": "412", "tribunal": "TST", "vinculante": false}, {"trecho": "art. 8O2 do Código Civil", "familia": "dispositivo", "artigo": "802", "diploma": "Código Civil"}, {"trecho": "julgado pela 3ª Turma do STJ em 2020, relatoria da Ministra Beltrana Souza", "familia": "vaga", "tribunal": "STJ", "ano": "2020", "relator": "Beltrana Souza"}]}
+Janela: "conforme consta às fls. 45/52 dos autos, a jurisprudência pacífica desta Corte não socorre o recorrente (Processo nº 0001234-56.2020.8.26.0100), como assentou ⟦…⟧ e a Súmula Administrativa nº 12 da AGU."
 Resposta: {"citacoes": []}
 """
 
 
+MASCARA = "⟦…⟧"
+
+
+def mascarar(contexto: str, ja_detectadas: list[dict[str, Any]]) -> str:
+    """Substitui cada span já detectado por :data:`MASCARA` (o modelo não pode repropor o que não vê;
+    medido em 20/09 com o Qwen real: sem a máscara ele repetia as citações do regex em quase toda
+    janela, gastando ~7 s por chamada para nada). Offsets relativos à janela; sobreposições toleradas."""
+    spans = sorted({(int(d["inicio"]), int(d["fim"])) for d in ja_detectadas
+                    if isinstance(d, dict) and "inicio" in d and "fim" in d}, reverse=True)
+    saida = contexto
+    fim_anterior = len(contexto) + 1
+    for ini, fim in spans:
+        ini, fim = max(0, ini), min(len(contexto), fim)
+        if fim <= ini or fim > fim_anterior:
+            continue
+        saida = saida[:ini] + MASCARA + saida[fim:]
+        fim_anterior = ini
+    return saida
+
+
 def mensagens_extrair(contexto: str, ja_detectadas: list[dict[str, Any]]) -> list[dict[str, str]]:
-    """Mensagens (chat) para ``extrair_citacoes``."""
+    """Mensagens (chat) para ``extrair_citacoes``: a janela vai com os spans já detectados mascarados."""
     usuario = (
         f"{_EXTRAIR_INSTRUCOES}\n"
-        f"Janela: {json.dumps(contexto, ensure_ascii=False)}\n"
-        f"Já detectadas: {json.dumps(ja_detectadas, ensure_ascii=False)}\n"
+        f"Janela: {json.dumps(mascarar(contexto, ja_detectadas), ensure_ascii=False)}\n"
         "Resposta (apenas o JSON):"
     )
     return [{"role": "system", "content": SISTEMA}, {"role": "user", "content": usuario}]
@@ -298,5 +314,6 @@ def recortar_contexto(contexto: str, trecho: str, maximo: int = CONTEXTO_MAX) ->
 
 __all__ = [
     "PROMPT_VERSAO", "PROMPT_HASH", "PROMPT_ID", "CONTEXTO_MAX", "OPERACOES", "SISTEMA", "ESQUEMAS", "MAX_TOKENS_NOVOS",
-    "mensagens_normalizar", "mensagens_escolher", "mensagens_classificar", "mensagens_extrair", "recortar_contexto",
+    "mensagens_normalizar", "mensagens_escolher", "mensagens_classificar", "mensagens_extrair", "mascarar", "MASCARA",
+    "recortar_contexto",
 ]

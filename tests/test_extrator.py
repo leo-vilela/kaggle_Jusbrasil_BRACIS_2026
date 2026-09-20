@@ -300,3 +300,108 @@ class TestReproducaoSemGPU(unittest.TestCase):
             # sem o cache, o mesmo modo abstém-se (documento fica como o regex deixou)
             a3 = MockArbitro(cache=CacheLLM(":memory:"), somente_cache=True)
             self.assertEqual(extrator.extrair(TEXTO, achados, a3)[0], [])
+
+
+class TestPromptMascarado(unittest.TestCase):
+    def test_spans_ja_detectados_sao_mascarados_e_o_original_fica_para_validar(self) -> None:
+        from caca_alucinacao.llm import prompts
+        from caca_alucinacao.llm.arbitro import ArbitroBase
+
+        janela = "como se vê no REsp1.234.567/SP, que afastou a tese, e na Súmula 7 do STJ."
+        i = janela.index("Súmula 7 do STJ")
+        ja = [{"inicio": i, "fim": i + 15, "trecho": "Súmula 7 do STJ"}]
+        self.assertEqual(prompts.mascarar(janela, ja), "como se vê no REsp1.234.567/SP, que afastou a tese, e na " + prompts.MASCARA + ".")
+        pedido = ArbitroBase.pedido_extrair(janela, ja)
+        self.assertEqual(pedido.entrada["janela"], janela)  # a validação e a chave do cache usam o original
+        self.assertIn(prompts.MASCARA, pedido.mensagens[1]["content"])
+        self.assertNotIn("Súmula 7 do STJ", pedido.mensagens[1]["content"])
+
+    def test_classe_tem_de_estar_escrita_no_span(self) -> None:
+        janela = "A Apólice nº 1234567, a Matrícula nº 12.345 e a Certidão nº 123456 instruem; ver REsp1.234.567/SP."
+        r = validar_extracao(janela, {"citacoes": [
+            {"trecho": "Apólice nº 1234567", "familia": "processo", "classe_cadeia": ["AP"], "numero_digitos": "1234567"},
+            {"trecho": "Matrícula nº 12.345", "familia": "processo", "classe_cadeia": ["MS"], "numero_digitos": "12345"},
+            {"trecho": "Certidão nº 123456", "familia": "processo", "classe_cadeia": ["RESP"], "numero_digitos": "123456"},
+            {"trecho": "REsp1.234.567/SP", "familia": "processo", "classe_cadeia": ["RESP"], "numero_digitos": "1234567", "uf": "SP"},
+        ]}, [])
+        self.assertEqual([c["trecho"] for c in r], ["REsp1.234.567/SP"])
+
+    def test_distratores_com_cara_de_sumula_ou_artigo_sao_rejeitados(self) -> None:
+        janela = ("A Súmula Administrativa nº 12 da AGU, a Súmula AGU nº 45, a OJ 394 da SBDI-1 do TST, a Orientação "
+                  "Jurisprudencial nº 191 da SDI-1, o Enunciado 33 da IV Jornada e o art. 5º do contrato não entram; "
+                  "a Sún1ula 4l2 do TST e o art. 802 do Código Civil entram.")
+        r = validar_extracao(janela, {"citacoes": [
+            {"trecho": "Súmula Administrativa nº 12 da AGU", "familia": "sumula", "numero_sumula": "12"},
+            {"trecho": "Súmula AGU nº 45", "familia": "sumula", "numero_sumula": "45"},
+            {"trecho": "OJ 394 da SBDI-1 do TST", "familia": "sumula", "numero_sumula": "394", "tribunal": "TST"},
+            {"trecho": "Orientação Jurisprudencial nº 191 da SDI-1", "familia": "sumula", "numero_sumula": "191"},
+            {"trecho": "Enunciado 33 da IV Jornada", "familia": "sumula", "numero_sumula": "33"},
+            {"trecho": "art. 5º do contrato", "familia": "dispositivo", "artigo": "5", "diploma": "contrato"},
+            {"trecho": "Sún1ula 4l2 do TST", "familia": "sumula", "numero_sumula": "412", "tribunal": "TST"},
+            {"trecho": "art. 802 do Código Civil", "familia": "dispositivo", "artigo": "802", "diploma": "Código Civil"},
+        ]}, [])
+        self.assertEqual([c["trecho"] for c in r], ["Sún1ula 4l2 do TST", "art. 802 do Código Civil"])
+
+    def test_texto_corrige_cadeia_uf_por_extenso_e_tribunal_da_sumula(self) -> None:
+        """Medição com o Qwen real (20/09): o modelo devolveu ``RESP`` para ``agravo em recurso
+        especial``, ``RESE`` para ``Re curso Especial`` e ``TST`` para ``Sún1ula 211 do STJ``; o
+        validador corrige pelo texto quando o texto escreve UMA cadeia/um tribunal, e lê a UF do
+        nome do estado (``oriundo de Rio Grande do Sul`` → ``RS``)."""
+        janela = ("Nesse sentido é o agravo em recurso especial de número 7.777.001, oriundo de Rio Grande do Sul. "
+                  "Ampara a pretensão o Re curso Especial 7.777.002/MG. Decorre da Sún1ula 211 do STJ. Ver o "
+                  "recurso especial de número 7.777.003, que enfrentou hipótese idêntica à dos autos; e o "
+                  "Processo nº 7777005-46.2022.8.26.0886 e o acórdão nº 777004 do tribunal de origem.")
+        r = validar_extracao(janela, {"citacoes": [
+            {"trecho": "agravo em recurso especial de número 7.777.001, oriundo de Rio Grande do Sul", "familia": "processo",
+             "classe_cadeia": ["RESP"], "numero_digitos": "7777001", "uf": None, "tribunal": "STJ"},
+            {"trecho": "Re curso Especial 7.777.002/MG", "familia": "processo", "classe_cadeia": ["RESE"],
+             "numero_digitos": "7777002", "uf": "MG"},
+            {"trecho": "Sún1ula 211 do STJ", "familia": "sumula", "numero_sumula": "211", "tribunal": "TST"},
+            {"trecho": "recurso especial de número 7.777.003, que enfrentou hipótese idêntica à dos autos",
+             "familia": "processo", "classe_cadeia": ["RESPE"], "numero_digitos": "7777003"},
+            {"trecho": "Processo nº 7777005-46.2022.8.26.0886", "familia": "processo", "classe_cadeia": ["APL"],
+             "numero_digitos": "77770054620228260886"},
+            {"trecho": "acórdão nº 777004 do tribunal de origem", "familia": "processo", "classe_cadeia": ["RRAG"],
+             "numero_digitos": "777004"},
+        ]}, [])
+        self.assertEqual([(c["trecho"], c.get("cadeia"), c.get("uf"), c.get("tribunal")) for c in r], [
+            ("agravo em recurso especial de número 7.777.001, oriundo de Rio Grande do Sul", ["ARESP"], "RS", "STJ"),
+            ("Re curso Especial 7.777.002/MG", ["RESP"], "MG", None),
+            ("Sún1ula 211 do STJ", None, None, "STJ"),
+        ])
+        # sem tribunal escrito no span, a súmula fica sem tribunal (o modelo não pode inventá-lo)
+        r = validar_extracao("ver a Súmula 7, como se sabe.", {"citacoes": [
+            {"trecho": "Súmula 7", "familia": "sumula", "numero_sumula": "7", "tribunal": "STJ"}]}, [])
+        self.assertEqual([(c["trecho"], c["tribunal"]) for c in r], [("Súmula 7", None)])
+
+    def test_lista_truncada_aproveita_as_propostas_completas(self) -> None:
+        """19 de 455 respostas da medição 1 estouraram o limite de tokens no meio da lista: as
+        propostas completas antes do corte valem (cada uma é validada sozinha); o resto cai."""
+        from caca_alucinacao.llm.arbitro import extrair_json_citacoes
+
+        janela = "ver o REsp1.234.567/SP e a Sún1ula 4l2 do TST e o art. 802 do Código Civil."
+        bruto = ('{"citacoes": [{"trecho": "REsp1.234.567/SP", "familia": "processo", "classe_cadeia": ["RESP"], '
+                 '"numero_digitos": "1234567", "uf": "SP"}, {"trecho": "Sún1ula 4l2 do TST", "familia": "sumula", '
+                 '"numero_sumula": "412", "tribunal": "TST"}, {"trecho": "art. 802 do Códi')
+        obj = extrair_json_citacoes(bruto)
+        self.assertTrue(obj.get("truncada"))
+        r = validar_extracao(janela, obj, [])
+        self.assertEqual([c["trecho"] for c in r], ["REsp1.234.567/SP", "Sún1ula 4l2 do TST"])
+        self.assertIsNone(extrair_json_citacoes("nada de JSON aqui"))
+        self.assertIsNone(extrair_json_citacoes('{"citacoes": [{"familia": "processo", "cla'))
+
+    def test_relator_precisa_de_pista_e_nao_pode_ser_um_orgao(self) -> None:
+        """Medição 1: o modelo devolveu ``Supremo Tribunal Federal`` como relator de ``precedente
+        firmado no ano de 2022 pelo Supremo Tribunal Federal``; o nome tem de vir depois de
+        ``Rel.``/``relator``/``relatoria`` e não pode ser um órgão."""
+        janela = ("Segundo o relator, Ministro Fulano Sicrano, o precedente firmado no ano de 2022 pelo Supremo Tribunal "
+                  "Federal não se aplica; ver o julgado do STJ proferido em 2021 pela relatoria de Beltrana Souza.")
+        r = validar_extracao(janela, {"citacoes": [
+            {"trecho": "precedente firmado no ano de 2022 pelo Supremo Tribunal Federal", "familia": "vaga",
+             "tribunal": "STF", "ano": "2022", "relator": "Supremo Tribunal Federal"},
+            {"trecho": "precedente firmado no ano de 2022 pelo Supremo Tribunal Federal", "familia": "vaga",
+             "tribunal": "STF", "ano": "2022", "relator": "Fulano Sicrano"},
+            {"trecho": "julgado do STJ proferido em 2021 pela relatoria de Beltrana Souza", "familia": "vaga",
+             "tribunal": "STJ", "ano": "2021", "relator": "Beltrana Souza"},
+        ]}, [])
+        self.assertEqual([c["trecho"] for c in r], ["julgado do STJ proferido em 2021 pela relatoria de Beltrana Souza"])

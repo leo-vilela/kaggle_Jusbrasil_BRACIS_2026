@@ -34,11 +34,14 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from ..normalizacao import (
+    _ALIASES,
     CONFUSOES,
+    ESTADOS,
     SIGLAS_CANONICAS,
     UFS,
     cadeia_de_classes,
     classificar_digitos,
+    sem_acento,
     separar_uf,
 )
 from ..tipos import FAMILIAS, TIPOS, TRIBUNAIS
@@ -199,6 +202,25 @@ def extrair_json(texto: str | None) -> dict[str, Any] | None:
         if obj is not None:
             return obj
     return None
+
+
+def extrair_json_citacoes(texto: str | None) -> dict[str, Any] | None:
+    """Como :func:`extrair_json`, para a resposta de ``extrair``: se a lista ``citacoes`` foi
+    **truncada** pelo limite de tokens (medido em 20/09: 19 de 455 respostas), aproveita as
+    propostas completas que vieram antes do corte — cada uma é validada sozinha, então uma lista
+    parcial é tão segura quanto uma inteira. Devolve ``None`` se nada parseia."""
+    obj = extrair_json(texto)
+    if isinstance(obj, dict) and isinstance(obj.get("citacoes"), list):
+        return obj
+    if not texto or '"citacoes"' not in texto:
+        return obj
+    depois = texto[texto.index('"citacoes"'):]
+    itens = [o for o in (_tentar_json(c) for c in _objetos_balanceados(depois))
+             if isinstance(o, dict) and isinstance(o.get("trecho"), str)]
+    if not itens:
+        return obj
+    logger.info("extrair: resposta truncada; %d proposta(s) completa(s) aproveitada(s)", len(itens))
+    return {"citacoes": itens, "truncada": True}
 
 
 # ---------------------------------------------------------------------------
@@ -432,22 +454,175 @@ COMPRIMENTO_MAXIMO_SPAN = {"processo": 90, "sumula": 70, "dispositivo": 130, "te
 _RE_TOKEN_NUMERICO = re.compile(r"[0-9OoIl|SsgqGBZz][0-9OoIl|SsgqGBZz.\-\s/]*")
 
 
-def _numero_presente(span: str, digitos: str) -> bool:
-    """Algum token numérico do span (dígitos, pontuação e letras confundíveis de OCR) produz
-    ``digitos`` só por trocas letra→dígito? Um dígito de OCR fora do número (``RE5p``, ``Sún1ula``)
-    não invalida o número que vem depois."""
+def _token_do_numero(span: str, digitos: str) -> tuple[int, int] | None:
+    """Offsets, no span, do token numérico (dígitos, pontuação e letras confundíveis de OCR) que
+    produz ``digitos`` só por trocas letra→dígito; ``None`` se nenhum. Um dígito de OCR fora do
+    número (``RE5p``, ``Sún1ula``) não invalida o número que vem depois. O token devolvido termina
+    no último dígito (as letras de OCR finais e o ``/`` ficam de fora)."""
     if not digitos:
-        return False
+        return None
     for m in _RE_TOKEN_NUMERICO.finditer(span):
         tok = m.group(0)
         if not any(c.isdigit() for c in tok):
             continue
-        # tenta o token inteiro e cada sufixo que começa num dígito (descarta letras iniciais)
-        inicios = [0] + [i for i, c in enumerate(tok) if c.isdigit()]
-        for i in inicios[:6]:
+        # prefere começar num dígito (as letras iniciais do token costumam ser da palavra anterior:
+        # ``número 2.OO0.111`` → o ``o`` de ``número``); só depois tenta o token inteiro
+        inicios = [i for i, c in enumerate(tok) if c.isdigit()][:6] + [0]
+        for i in inicios:
             if digitos_compativeis(tok[i:], digitos):
-                return True
-    return False
+                fim = max(j for j, c in enumerate(tok) if c.isdigit()) + 1
+                return m.start() + i, m.start() + fim
+    return None
+
+
+def _numero_presente(span: str, digitos: str) -> bool:
+    return _token_do_numero(span, digitos) is not None
+
+
+# --- a classe/palavra-chave tem de estar no span (o modelo não pode "batizar" um número) ----------
+_OCR_INVERSO = {"0": "o", "1": "l", "2": "z", "3": "e", "4": "a", "5": "s", "6": "g", "7": "t", "8": "b", "9": "g"}
+
+
+def _so_letras(texto: str) -> str:
+    """Letras minúsculas sem acento, com dígitos DENTRO de palavras revertidos pelo mapa inverso de OCR
+    (``RE5p`` → ``resp``); tudo o mais (espaços, hífens, quebras, pontuação) some."""
+    base = sem_acento(texto).lower().replace("º", " ").replace("ª", " ")
+    saida: list[str] = []
+    for i, c in enumerate(base):
+        if c.isascii() and c.isalpha():
+            saida.append(c)
+        elif c.isdigit():
+            antes = base[i - 1].isalpha() if i > 0 else False
+            depois = base[i + 1].isalpha() if i + 1 < len(base) else False
+            if antes and depois:
+                saida.append(_OCR_INVERSO[c])
+    return "".join(saida)
+
+
+def _aliases_letras() -> tuple[dict[str, set[str]], dict[tuple[str, ...], set[str]]]:
+    por_sigla: dict[str, set[str]] = {}
+    por_cadeia: dict[tuple[str, ...], set[str]] = {}
+    for chave, cadeia in _ALIASES:
+        letras = re.sub(r"[^a-z]", "", sem_acento(chave).lower())
+        if not letras or not cadeia:
+            continue
+        if len(cadeia) == 1:
+            por_sigla.setdefault(cadeia[0], set()).add(letras)
+        else:
+            por_cadeia.setdefault(tuple(cadeia), set()).add(letras)
+    for sigla in SIGLAS_CANONICAS:
+        por_sigla.setdefault(sigla, set()).add(sigla.lower())
+    return por_sigla, por_cadeia
+
+
+_ALIASES_SIGLA, _ALIASES_CADEIA = _aliases_letras()
+_UFS_LETRAS = "|".join(sorted(u.lower() for u in UFS))
+_ESTADOS_LETRAS = "|".join(sorted(ESTADOS, key=len, reverse=True))
+_CONECTORES_CADEIA = r"(?:no|na|nos|nas|em|de|do|da)?"
+_ANTES_CLASSE = r"(?:processo|processon|autos|autosn|no|n|o|a)?(?:tst)?"
+#: entre a classe e o número: ``nº``, ``n.``, ``de número``…
+_ANTES_NUMERO = r"(?:n|no|num|numero|denumero|denumeros|de|sobn|sobno|sobon|sobono)?"
+#: depois do número: ``/SP``, ``, oriundo de São Paulo``, ``do Estado do Paraná``, ``do RS``
+_DEPOIS_NUMERO = (r"(?:oriund[oa]|proveniente|originari[oa])?(?:d[oea]s?)?(?:estadod[oea]s?)?"
+                  r"(?:" + _UFS_LETRAS + "|" + _ESTADOS_LETRAS + r")?")
+_RE_ESTADO_FINAL = re.compile(
+    r"(?:oriund[oa]|proveniente|origin[áa]ri[oa])?\s*d[oea]s?\s+(?:estado\s+d[oea]s?\s+)?"
+    r"([A-ZÀ-Ú][A-Za-zÀ-ÿ]*(?:\s+(?:d[oea]s?\s+)?[A-ZÀ-Ú][A-Za-zÀ-ÿ]*){0,3})\s*[.,;)]?\s*$")
+
+
+def _regex_cadeia(cadeia: tuple[str, ...]) -> re.Pattern[str] | None:
+    """Regex (cacheada) das letras que escrevem ``cadeia``; ``None`` se alguma sigla é desconhecida."""
+    rx = _CACHE_REGEX_CADEIA.get(cadeia)
+    if rx is None:
+        if not cadeia or any(s not in _ALIASES_SIGLA for s in cadeia):
+            return None
+        partes = []
+        for i, sigla in enumerate(cadeia):
+            alts = sorted(_ALIASES_SIGLA[sigla], key=len, reverse=True)
+            partes.append("(?:" + "|".join(re.escape(a) for a in alts) + ")")
+            if i < len(cadeia) - 1:
+                partes.append(_CONECTORES_CADEIA)
+        formas = ["".join(partes)] + [re.escape(a) for a in _ALIASES_CADEIA.get(cadeia, ())]
+        rx = re.compile("^" + _ANTES_CLASSE + "(?:" + "|".join(formas) + ")" + _ANTES_NUMERO + _DEPOIS_NUMERO + "$")
+        _CACHE_REGEX_CADEIA[cadeia] = rx
+    return rx
+
+
+_CACHE_REGEX_CADEIA: dict[tuple[str, ...], re.Pattern[str]] = {}
+
+
+def _classe_no_span(span_sem_numero: str, cadeia: list[str]) -> bool:
+    """As letras do span (sem o número) são exatamente uma forma de escrever ``cadeia`` — com
+    prefixos encadeados, ``nº``/``de número``, UF (sigla ou nome do estado) opcionais.
+    ``Apólice nº 1234567`` não é ``AP``; ``Processo nº <CNJ>`` não é classe nenhuma."""
+    rx = _regex_cadeia(tuple(cadeia))
+    return rx is not None and rx.match(_so_letras(span_sem_numero)) is not None
+
+
+def _cadeias_escritas_no_span(span_sem_numero: str) -> list[list[str]]:
+    """Todas as cadeias (siglas isoladas e cadeias com apelido próprio) que as letras do span
+    escrevem — para corrigir, pelo texto, uma cadeia que o modelo devolveu errada
+    (``agravo em recurso especial`` devolvido como ``RESP``): só vale se for uma única."""
+    letras = _so_letras(span_sem_numero)
+    saida: list[list[str]] = []
+    for cadeia in [(s,) for s in sorted(_ALIASES_SIGLA)] + sorted(_ALIASES_CADEIA):
+        rx = _regex_cadeia(cadeia)
+        if rx is not None and rx.match(letras):
+            saida.append(list(cadeia))
+    return saida
+
+
+def _uf_por_extenso(span: str) -> str | None:
+    """UF do nome do estado escrito no fim do span (``, oriundo de Rio Grande do Sul`` → ``RS``);
+    só correspondência exata com :data:`ESTADOS` (sem tolerância a OCR)."""
+    m = _RE_ESTADO_FINAL.search(span)
+    if not m:
+        return None
+    return ESTADOS.get(re.sub(r"[^a-z]", "", sem_acento(m.group(1)).lower()))
+
+
+_RE_PISTA_RELATOR = (r"(?:\brel\.|\brelator[ae]?s?\b|\brelatoria\b)\s*[:,]?\s*"
+                     r"(?:(?:min\.|ministr[oa]s?|des\.|desembargador[a]?|juiz[a]?|d[oa]s?|de|pel[oa]s?|convocad[oa])\s*[:,]?\s*)*")
+_RE_NAO_NOME = re.compile(r"tribunal|supremo|superior|corte|turma|se[çc][ãa]o|plen[áa]rio|pleno|corregedoria|conselho|"
+                          r"relator|ministr|desembargador|s?bdi|\bsdi\b|\bnull\b", re.I)
+
+
+def _relator_com_pista(span: str, relator: str) -> bool:
+    """O nome do relator está no span **introduzido por uma pista** (``Rel.``, ``relator``,
+    ``relatoria d[ae]``, ``Rel. Min.``) e não é um órgão (``Supremo Tribunal Federal`` devolvido
+    como relator na medição de 20/09) — o modelo não pode promover qualquer nome a relator."""
+    if _RE_NAO_NOME.search(relator):
+        return False
+    nome = r"\s+".join(re.escape(p) for p in relator.split())
+    return re.search(_RE_PISTA_RELATOR + nome, span, re.I) is not None
+
+
+_RE_TRIBUNAL_SIGLA = re.compile(r"(?<![A-Z])(STF|STJ|TST|TSE|STM)(?![A-Z])")
+_TRIBUNAL_EXTENSO = (("supremo", "STF"), ("superior tribunal de justi", "STJ"), ("tribunal superior do trabalho", "TST"),
+                     ("tribunal superior eleitoral", "TSE"), ("superior tribunal militar", "STM"))
+
+
+def _tribunal_escrito(span: str) -> str | None:
+    """Tribunal superior escrito no span (sigla ou por extenso); ``None`` se nenhum ou mais de um."""
+    achados = {m.group(1) for m in _RE_TRIBUNAL_SIGLA.finditer(span.upper())}
+    baixo = sem_acento(span).lower()
+    achados.update(t for chave, t in _TRIBUNAL_EXTENSO if chave in baixo)
+    return achados.pop() if len(achados) == 1 else None
+
+
+#: Palavras que denunciam um distrator com cara de súmula/dispositivo/processo (a base do desafio só
+#: tem súmulas dos cinco tribunais superiores e artigos de lei; OJ, súmula administrativa, enunciado de
+#: jornada, cláusula de contrato, apólice, matrícula, protocolo… nunca são citações).
+_RE_DISTRATOR_SUMULA = re.compile(
+    r"administrativ|\bagu\b|\boj\b|orienta[çc][ãa]o\s+jurisprudencial|s?bdi|\bsdi\b|\bcjf\b|jornada|\btnu\b|\bcarf\b|"
+    r"\bcnj\b|\btcu\b|\bcrps\b|conselho|turma\s+nacional|\bcsm\b|\bcgj\b|corregedoria|\bstn\b|\bcvm\b|\bbacen\b",
+    re.I)
+_RE_SUMULA_PALAVRA = re.compile(r"s[úu]?[mn]?[1l]?u?[l1]?a\b|s[úu]m\.|\bsv\b|enunciado|verbete", re.I)
+_RE_DISTRATOR_DISPOSITIVO = re.compile(
+    r"contrato|estatuto\s+social|regimento|edital|conven[çc][ãa]o|acordo|termo\s+de|escritura|ap[óo]lice|"
+    r"cl[áa]usula|instrumento|proposta|or[çc]amento", re.I)
+_RE_ARTIGO_PALAVRA = re.compile(r"\bart(?:s?\.|igos?\b)", re.I)
+_RE_TEMA_PALAVRA = re.compile(r"\bt[ec]m[aã]\b", re.I)
 
 
 def validar_extracao(janela: str, saida: dict[str, Any] | None,
@@ -502,22 +677,43 @@ def validar_extracao(janela: str, saida: dict[str, Any] | None,
             cadeia = _limpar_cadeia(item.get("classe_cadeia"))
             digitos = _digitos_de(item.get("numero_digitos"))
             sem_uf, uf_span = separar_uf(texto_span)
-            if not cadeia or len(digitos) < 3 or not _numero_presente(sem_uf, digitos):
+            tok = _token_do_numero(sem_uf, digitos) if len(digitos) >= 3 else None
+            if tok is None:
                 continue
+            sem_numero = sem_uf[:tok[0]] + " " + sem_uf[tok[1]:]
+            if not cadeia or not _classe_no_span(sem_numero, cadeia):
+                # a cadeia devolvida não é o que está escrito: vale o texto, se ele escreve UMA
+                # cadeia conhecida (``agravo em recurso especial`` devolvido como ``RESP`` → ``ARESP``)
+                escritas = _cadeias_escritas_no_span(sem_numero)
+                if len(escritas) != 1:
+                    logger.info("extrair: classe %s não está escrita no span %r; proposta ignorada", cadeia, texto_span)
+                    continue
+                logger.info("extrair: cadeia %s corrigida pelo texto para %s em %r", cadeia, escritas[0], texto_span)
+                cadeia = escritas[0]
             uf = _limpar_uf(item.get("uf"))
             if uf and not re.search(r"(?<![A-Z])" + uf + r"(?![A-Z])", texto_span.upper()):
                 uf = None
-            campos.update(cadeia=cadeia, digitos=digitos, uf=uf or uf_span, tribunal=tribunal)
+            campos.update(cadeia=cadeia, digitos=digitos, uf=uf or uf_span or _uf_por_extenso(texto_span),
+                          tribunal=tribunal)
         elif familia in ("sumula", "tema"):
             numero = _digitos_de(item.get("numero_sumula") if familia == "sumula" else item.get("numero_digitos"))
             if not numero or not _numero_presente(texto_span, numero):
                 continue
+            palavra = _RE_SUMULA_PALAVRA if familia == "sumula" else _RE_TEMA_PALAVRA
+            if not palavra.search(texto_span) or _RE_DISTRATOR_SUMULA.search(texto_span):
+                continue
+            if familia == "sumula":
+                # o tribunal da súmula é o que está escrito no span (o modelo devolveu ``TST`` para
+                # ``Sún1ula 211 do STJ`` na medição de 20/09); sem tribunal escrito, fica sem tribunal
+                tribunal = _tribunal_escrito(texto_span)
             campos.update(numero=numero, tribunal=tribunal,
                           vinculante=bool(item.get("vinculante")) if familia == "sumula" else False)
         elif familia == "dispositivo":
             artigo = _digitos_de(item.get("artigo"))
             diploma = item.get("diploma")
             if not artigo or not _numero_presente(texto_span, artigo) or not _literal_no_span(texto_span, diploma, 2):
+                continue
+            if not _RE_ARTIGO_PALAVRA.search(texto_span) or _RE_DISTRATOR_DISPOSITIVO.search(texto_span):
                 continue
             campos.update(artigo=artigo, diploma=str(diploma).strip())
         else:  # vaga
@@ -527,7 +723,7 @@ def validar_extracao(janela: str, saida: dict[str, Any] | None,
                                               or _RE_TRIBUNAL_EXTENSO.search(texto_span)))
             if not tem_tribunal or len(ano) != 4 or ano not in texto_span or not _RE_ANO.search(texto_span):
                 continue
-            if not isinstance(relator, str) or len(relator.split()) < 2 or not _literal_no_span(texto_span, relator, 4):
+            if not isinstance(relator, str) or len(relator.split()) < 2 or not _relator_com_pista(texto_span, relator):
                 continue
             campos.update(tribunal=tribunal, ano=ano, relator=" ".join(relator.split()))
         ocupados.append((ini, fim))
@@ -712,7 +908,7 @@ class ArbitroBase:
         for pedido, bruto in zip(pedidos, brutos):
             resultado: Any = None
             if bruto is not None:
-                obj = extrair_json(bruto)
+                obj = extrair_json_citacoes(bruto) if pedido.operacao == "extrair" else extrair_json(bruto)
                 if obj is None:
                     logger.info("árbitro %s: resposta sem JSON válido (%s)", self.nome, pedido.operacao)
                 try:
@@ -755,5 +951,5 @@ __all__ = [
     "Arbitro", "ArbitroBase", "Pedido", "ErroDependencia", "FAMILIAS_ARBITRO",
     "extrair_json", "digitos_compativeis", "validar_normalizacao", "validar_escolha",
     "validar_classificacao", "validar_extracao", "aparar_fronteiras", "candidato_de_registro",
-    "MAX_CITACOES_EXTRAIDAS", "COMPRIMENTO_MAXIMO_SPAN",
+    "MAX_CITACOES_EXTRAIDAS", "COMPRIMENTO_MAXIMO_SPAN", "_classe_no_span", "_token_do_numero",
 ]

@@ -1,6 +1,6 @@
 # Caça-Alucinações — verificador de citações jurídicas (Jusbrasil × BRACIS 2026)
 
-> Estado (20/09/2026, v1.2): **todos os módulos prontos e testados** (585 testes, `make testar`;
+> Estado (20/09/2026, v1.2.1): **todos os módulos prontos e testados** (589 testes, `make testar`;
 > reprodução em um comando, `make reproduzir`). Núcleo determinístico só com biblioteca padrão;
 > score no conjunto de desenvolvimento **1,10000** (1,0999960; τ = 0), nos sintéticos n2/n3
 > 1,10000 / 1,09986 e nos 34 conjuntos adversariais das revisões entre 1,027 e 1,10000 (todos com
@@ -9,8 +9,10 @@
 > calibrar-completo`, ADR 0007). O árbitro LLM (`llm/`, Qwen2.5-7B-Instruct, pesos originais,
 > revisão fixa) segue o **padrão ouro** (ADR 0003): extrai e desambigua com toda saída validada
 > contra o texto e a base, nunca classifica; `Dockerfile.llm` roda com ele **ligado**, e
-> `make comparar-arbitro` mede núcleo × árbitro com veredito automático. A submissão de
-> referência continua sendo a do núcleo até a medição com o modelo real (`scripts/rodar_llm_local.py`).
+> `make comparar-arbitro` mede núcleo × árbitro com veredito automático. Medição 1 com o Qwen real
+> na RTX 5090 (20/09): dev idêntico, τ = 0 em todos os conjuntos, `r6_extrator_formas` +0,418, mas
+> FPs em distratores → veredito MANTER DESLIGADO; a v1.2.1 fecha essas brechas na validação (ADR
+> 0003, "Medição 1") e a medição 2 decide. A submissão de referência continua sendo a do núcleo.
 
 ## O desafio em 5 linhas
 
@@ -182,7 +184,7 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_
 ### 2. Núcleo determinístico (o que gera a submissão de referência)
 ```bash
 make dados ZIP=../arquivos/desafio-jusbrasil-bracis-2026.zip   # ou pule se dados/ já estiver completo
-make indice && make sinteticos && make testar                  # 585 testes
+make indice && make sinteticos && make testar                  # 589 testes
 make rodar && make avaliar                                     # 1,10000 esperado no dev
 make submissao                                                 # submission.csv + submission_jsons.zip
 ```
