@@ -11,5 +11,11 @@ cd /d "%~dp0.."
 if not exist saida_docker mkdir saida_docker
 echo [%date% %time%] iniciando no WSL (%DISTRO%) em %CD% > saida_docker\log.txt
 wsl.exe --distribution %DISTRO% --exec bash -lc "cd \"$(wslpath -u '%CD%')\" && PY=%PYWSL%; [ -x \"$PY\" ] || PY=python3; PY=\"$PY\" bash scripts/docker_llm.sh %* >> saida_docker/log.txt 2>&1; echo \"[fim] codigo $?\" >> saida_docker/log.txt"
-echo Terminado. Veja saida_docker\log.txt
+echo.
+echo ---- saida_docker\log.txt ----
+type saida_docker\log.txt
+echo.
+echo Terminado. Se apareceu "docker nao encontrado": instale o Docker Desktop (backend WSL2) e, em Settings ^> Resources ^>
+echo WSL integration, ative a distro %DISTRO%; depois clique de novo. Com o argumento gpu roda tambem o modelo na GPU.
+pause
 endlocal
